@@ -6,17 +6,22 @@ Architecture:
 - SVG: lxml tree walk composing all ancestor transforms (handles potrace/Inkscape)
 - Even-odd fill rule via shapely difference/union
 - 3D: swept-profile approach → single watertight solid
-  * Per-vertex outward normals on the polygon boundary
-  * Arc inset applied per-vertex (no buffer → no vertex count mismatch)  
-  * Bottom cap + wall strips + top cap share exact vertex positions
+  * Per-vertex normals on the polygon boundary
+  * Arc inset applied per-vertex (no buffer → no vertex count mismatch)
+  * Unified inset formula: both exterior and holes use pts - u * vertex_normals
+    (CCW exterior: normals outward → moves inward ✓)
+    (CW hole:      normals inward  → moves outward = toward material ✓)
+  * Caps use wall vertex indices directly via Delaunay (no Steiner points)
+  * Correct euler per genus: 2-2*n_holes
 """
 
 import numpy as np
 import trimesh
-from shapely.geometry import Polygon, MultiPolygon, LineString
+from shapely.geometry import Polygon, MultiPolygon, LineString, Point
 from shapely.geometry.polygon import orient
 import svgpathtools
 from lxml import etree
+from scipy.spatial import Delaunay
 import re, io, math
 
 
@@ -149,129 +154,155 @@ def svg_to_polygons(svg_bytes):
 
 # ─── 3-D geometry ─────────────────────────────────────────────────────────────
 
-def _signed_area_2d(coords):
-    pts = list(coords)
-    n = len(pts)
-    return sum(pts[i][0]*pts[(i+1)%n][1] - pts[(i+1)%n][0]*pts[i][1] for i in range(n)) / 2
-
-
-def _vertex_normals(pts, outward=True):
-    """Per-vertex outward (or inward) normals for a 2D polygon ring."""
+def _vertex_normals(pts):
+    """
+    Per-vertex normals for a 2D ring.
+    For CCW ring: normals are outward (away from interior).
+    For CW ring:  normals are inward  (into the hole).
+    This asymmetry is intentional and used by the unified inset formula below.
+    """
     n = len(pts)
     def edge_n(p0, p1):
-        d = p1 - p0; dn = np.linalg.norm(d)
+        d = p1-p0; dn = np.linalg.norm(d)
         if dn < 1e-10: return np.zeros(2)
-        t = d/dn; return np.array([t[1], -t[0]])  # outward for CCW ring
-
-    vnormals = np.zeros((n, 2))
+        t = d/dn; return np.array([t[1], -t[0]])  # 90° CW = outward for CCW ring
+    vn = np.zeros((n, 2))
     for i in range(n):
         n1 = edge_n(pts[i], pts[(i+1)%n])
         n2 = edge_n(pts[(i-1)%n], pts[i])
-        avg = n1 + n2; nm = np.linalg.norm(avg)
-        vnormals[i] = avg/nm if nm > 1e-10 else n1
+        avg = n1+n2; nm = np.linalg.norm(avg)
+        vn[i] = avg/nm if nm > 1e-10 else n1
+    return vn
 
-    return vnormals if outward else -vnormals
+
+def _triangulate_cap(ring_xys_list, shapely_poly):
+    """
+    Triangulate a cap using ONLY the provided ring vertices (no Steiner points).
+
+    ring_xys_list: [np.array(n_ext, 2), np.array(n_h1, 2), ...]
+    shapely_poly: used for centroid inside-test to filter Delaunay triangles.
+    Returns face array (indices into np.vstack(ring_xys_list)).
+    """
+    all_pts = np.vstack(ring_xys_list)
+    tri = Delaunay(all_pts)
+    valid = []
+    for face in tri.simplices:
+        c = all_pts[face].mean(axis=0)
+        if shapely_poly.contains(Point(c)):
+            valid.append(face)
+    return np.array(valid, dtype=np.int64) if valid else np.empty((0,3), int)
 
 
 def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=24):
     """
     Single watertight mesh for a shapely Polygon (may have holes).
-    Uses swept-profile with per-vertex normals — no buffer() calls on rings.
+
+    Inset formula (unified for exterior and holes):
+      ring_xy = pts - u * vertex_normals(pts)
+      - CCW exterior: normals outward → pts - u*n moves inward ✓
+      - CW hole:      normals inward  → pts - u*n moves toward material ✓
+
+    Wall face winding (same for both):
+      [a,b,c][a,c,d] — CCW exterior gives outward normals,
+                        CW hole gives inward-of-solid normals ✓
+
+    Caps re-use wall vertex indices via Delaunay (no Steiner points, no seams).
     """
     r = min(fillet_radius, wall_height * 0.48)
     straight_h = wall_height - r
 
+    # Arc profile: z from straight_h to wall_height, inset from 0 to r
+    z_levels = (
+        [0.0, straight_h]
+        + [straight_h + r*math.sin(math.pi/2*s/n_arc) for s in range(1, n_arc+1)]
+    )
+    u_levels = (
+        [0.0, 0.0]
+        + [r*(1-math.cos(math.pi/2*s/n_arc)) for s in range(1, n_arc+1)]
+    )
+    n_levels = len(z_levels)
+
     all_verts = []
     all_faces = []
-    vidx = 0
+    global_offset = 0
+    cap_data = []  # list of (bot_global_idx, top_global_idx) per ring
 
-    # Cap polygons (2D) for bottom and top
-    bot_ext_2d, top_ext_2d = None, None
-    bot_holes_2d, top_holes_2d = [], []
+    rings = [(polygon.exterior.coords, False)] + [
+        (interior.coords, True) for interior in polygon.interiors
+    ]
 
-    def add_ring(ring_coords):
-        nonlocal vidx
+    for ring_coords, is_hole in rings:
         pts = np.array(list(ring_coords)[:-1])
-        n = len(pts)
-        if n < 3: return None, None
+        n_ring = len(pts)
+        if n_ring < 3:
+            continue
 
-        sa = _signed_area_2d(ring_coords)
-        is_ccw = sa > 0
-        vnormals = _vertex_normals(pts, outward=is_ccw)
+        vn = _vertex_normals(pts)
 
-        # Level heights and inset amounts along arc
-        z_levels = [0.0, straight_h] + [straight_h + r*math.sin(math.pi/2*s/n_arc) for s in range(1, n_arc+1)]
-        u_levels = [0.0, 0.0]          + [r*(1-math.cos(math.pi/2*s/n_arc))         for s in range(1, n_arc+1)]
-        n_levels = len(z_levels)
+        # Build vertex grid (n_levels × n_ring, 3)
+        verts = np.empty((n_levels * n_ring, 3))
+        for lv, (u, z) in enumerate(zip(u_levels, z_levels)):
+            xy = pts - u * vn      # unified formula
+            verts[lv*n_ring:(lv+1)*n_ring, :2] = xy
+            verts[lv*n_ring:(lv+1)*n_ring, 2]  = z
 
-        # Build vertex grid: n_levels × n
-        verts_grid = []
-        for lv in range(n_levels):
-            u = u_levels[lv]; z = z_levels[lv]
-            ring_pts = pts - u * vnormals  # inset toward interior
-            for i in range(n):
-                verts_grid.append([ring_pts[i][0], ring_pts[i][1], z])
+        all_verts.append(verts)
 
-        verts_grid = np.array(verts_grid)
-        all_verts.append(verts_grid)
-
-        # Build quad strips
+        # Wall quads as triangle pairs (same winding for both exterior and holes)
+        faces = []
         for lv in range(n_levels - 1):
-            for i in range(n):
-                a = vidx + lv*n + i
-                b = vidx + lv*n + (i+1)%n
-                c = vidx + (lv+1)*n + (i+1)%n
-                d = vidx + (lv+1)*n + i
-                if is_ccw:  # exterior: standard CCW winding
-                    all_faces.extend([[a,b,c],[a,c,d]])
-                else:        # hole: SAME winding — normal direction already encoded in vnormals
-                    all_faces.extend([[a,b,c],[a,c,d]])
+            for i in range(n_ring):
+                a = lv*n_ring + i
+                b = lv*n_ring + (i+1)%n_ring
+                c = (lv+1)*n_ring + (i+1)%n_ring
+                d = (lv+1)*n_ring + i
+                faces.extend([[a,b,c],[a,c,d]])
 
-        # Extract bottom ring (lv=0) and top ring (lv=n_levels-1) as 2D points
-        bot_ring = [(verts_grid[i][0], verts_grid[i][1]) for i in range(n)]
-        top_ring = [(verts_grid[(n_levels-1)*n+i][0], verts_grid[(n_levels-1)*n+i][1]) for i in range(n)]
+        all_faces.append(np.array(faces, dtype=np.int64) + global_offset)
 
-        vidx += len(verts_grid)
-        return bot_ring, top_ring
+        bot_idx = list(range(global_offset, global_offset + n_ring))
+        top_idx = list(range(global_offset + (n_levels-1)*n_ring,
+                              global_offset + n_levels*n_ring))
+        cap_data.append((bot_idx, top_idx))
+        global_offset += len(verts)
 
-    # Exterior
-    bot_ext_2d, top_ext_2d = add_ring(polygon.exterior.coords)
+    if not all_verts:
+        return None
 
-    # Holes
-    for interior in polygon.interiors:
-        bh, th = add_ring(interior.coords)
-        if bh: bot_holes_2d.append(bh)
-        if th: top_holes_2d.append(th)
+    verts_all = np.vstack(all_verts)
+    faces_all = np.vstack(all_faces)
 
-    # Bottom cap (z=0, normals down)
-    if bot_ext_2d:
-        try:
-            bp = orient(Polygon(bot_ext_2d, bot_holes_2d), sign=1.0)
-            v2d, f2d = trimesh.creation.triangulate_polygon(bp, engine='earcut')
-            bv = np.column_stack([v2d, np.zeros(len(v2d))])
-            all_verts.append(bv)
-            all_faces.extend((f2d[:,::-1] + vidx).tolist())
-            vidx += len(bv)
-        except Exception: pass
+    ext_bot, ext_top = cap_data[0]
+    hole_bots = [cap_data[i][0] for i in range(1, len(cap_data))]
+    hole_tops = [cap_data[i][1] for i in range(1, len(cap_data))]
 
-    # Top cap (z=wall_height, normals up)
-    if top_ext_2d:
-        try:
-            tp = orient(Polygon(top_ext_2d, top_holes_2d), sign=1.0)
-            v2d, f2d = trimesh.creation.triangulate_polygon(tp, engine='earcut')
-            tv = np.column_stack([v2d, np.full(len(v2d), wall_height)])
-            all_verts.append(tv)
-            all_faces.extend((f2d + vidx).tolist())
-            vidx += len(tv)
-        except Exception: pass
+    # ── Bottom cap (normals DOWN → reversed winding) ─────────────────────────
+    try:
+        bex = verts_all[ext_bot, :2]
+        bho = [verts_all[hb, :2] for hb in hole_bots]
+        bp  = orient(Polygon(bex.tolist(), [h.tolist() for h in bho]), sign=1.0)
+        rxs = [bex] + bho
+        loc = np.array(ext_bot + [i for hb in hole_bots for i in hb])
+        fl  = _triangulate_cap(rxs, bp)
+        if len(fl) > 0:
+            faces_all = np.vstack([faces_all, loc[fl[:, ::-1]]])
+    except Exception:
+        pass
 
-    if not all_verts: return None
+    # ── Top cap (normals UP → standard winding) ──────────────────────────────
+    try:
+        tex = verts_all[ext_top, :2]
+        tho = [verts_all[ht, :2] for ht in hole_tops]
+        tp  = orient(Polygon(tex.tolist(), [h.tolist() for h in tho]), sign=1.0)
+        rxs = [tex] + tho
+        loc = np.array(ext_top + [i for ht in hole_tops for i in ht])
+        fl  = _triangulate_cap(rxs, tp)
+        if len(fl) > 0:
+            faces_all = np.vstack([faces_all, loc[fl]])
+    except Exception:
+        pass
 
-    verts = np.vstack(all_verts)
-    faces = np.array(all_faces)
-    # process=False: skip expensive BFS winding check — our winding is correct by construction
-    mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
-    # merge_vertices closes seams between walls and caps (fast: ~0.004s)
+    mesh = trimesh.Trimesh(vertices=verts_all, faces=faces_all, process=False)
     mesh.merge_vertices(merge_tex=False, merge_norm=False)
     return mesh
 
