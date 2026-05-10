@@ -686,7 +686,7 @@ def generate():
 
     eff_r = info.get('fillet_effective_mm', fillet_radius)
     stem = os.path.splitext(svg_file.filename)[0]
-    out_name = f"{stem}_fillet_{eff_r:.2f}mm.stl"
+    out_name = stem + ".stl"
 
     response = send_file(
         io.BytesIO(stl_bytes),
