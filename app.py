@@ -19,485 +19,458 @@ HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SVG → STL · Rounded Edges · Buinho FabLab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=ASAP:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Asap:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <style>
   :root {
-    --creme:  #FAF0E1;
-    --azul:   #2038A6;
-    --laranja:#FA6415;
-    --preto:  #1a1a1a;
-    --cinza:  #e8ddd0;
-    --sombra: rgba(32,56,166,0.10);
+    --creme: #FAF0E1;
+    --azul: #2038A6;
+    --laranja: #FA6415;
+    --vermelho: #F23A2F;
+    --amarelo: #FCB515;
+    --cinza: #6b6354;
   }
-
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
   body {
-    font-family: 'ASAP', sans-serif;
+    font-family: 'Asap', system-ui, sans-serif;
     background: var(--creme);
-    color: var(--preto);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
+    color: #1a1a1a;
+    line-height: 1.5;
   }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
 
   /* ── Header ── */
   header {
-    background: var(--azul);
-    color: #fff;
-    padding: 1.5rem 2rem 1.2rem;
-    display: flex;
-    align-items: flex-start;
-    gap: 1.4rem;
-  }
-  .logo-block {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-  .logo-block svg { width: 48px; height: 48px; }
-  .logo-label {
-    font-size: 0.6rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    opacity: 0.75;
-    color: #fff;
-    white-space: nowrap;
-  }
-  .header-text h1 {
-    font-size: clamp(1.1rem, 3vw, 1.5rem);
-    font-weight: 700;
-    line-height: 1.2;
-  }
-  .header-text p {
-    font-size: 0.85rem;
-    opacity: 0.82;
-    margin-top: 0.25rem;
-    line-height: 1.4;
-  }
-  .lang-badge {
-    margin-left: auto;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
-    font-size: 0.72rem;
-    opacity: 0.7;
-    white-space: nowrap;
-  }
-
-  /* ── Main ── */
-  main {
-    flex: 1;
-    max-width: 720px;
-    width: 100%;
-    margin: 0 auto;
-    padding: 2rem 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1.8rem;
-  }
-
-  /* ── Cards ── */
-  .card {
-    background: #fff;
-    border-radius: 12px;
-    padding: 1.6rem;
-    box-shadow: 0 2px 12px var(--sombra);
-  }
-  .card h2 {
-    font-size: 0.78rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--azul);
-    margin-bottom: 1rem;
-  }
-
-  /* ── Drop zone ── */
-  .drop-zone {
-    border: 2.5px dashed var(--cinza);
-    border-radius: 10px;
-    padding: 2.5rem 1rem;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
-    position: relative;
-    background: var(--creme);
-  }
-  .drop-zone.active {
-    border-color: var(--laranja);
-    background: #fff5ee;
-  }
-  .drop-zone.has-file {
-    border-color: var(--azul);
-    background: #f0f4ff;
-  }
-  .drop-zone input[type="file"] {
-    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
-  }
-  .drop-icon {
-    font-size: 2.8rem;
-    margin-bottom: 0.5rem;
-    display: block;
-    line-height: 1;
-  }
-  .drop-text { font-size: 0.95rem; color: #555; }
-  .drop-text strong { color: var(--azul); }
-  .file-name {
-    margin-top: 0.6rem;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--laranja);
-    display: none;
-  }
-
-  /* ── Sliders ── */
-  .params { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
-  @media (max-width: 480px) { .params { grid-template-columns: 1fr; } }
-
-  .param-group label {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--azul);
-    margin-bottom: 0.45rem;
+    flex-wrap: wrap;
+    gap: 1rem;
   }
-  .param-group label .val {
-    font-weight: 700;
-    font-size: 1rem;
-    color: var(--laranja);
+  .brand { font-size: 1.1rem; font-weight: 700; color: var(--azul); letter-spacing: -0.01em; }
+  .brand span.educ { color: var(--laranja); font-weight: 500; }
+
+  /* ── Lang switcher — pill style from Braille Generator ── */
+  .lang {
+    display: inline-flex; gap: 0;
+    background: rgba(32, 56, 166, 0.08);
+    border-radius: 100px; padding: 3px;
   }
+  .lang button {
+    background: none; border: none; padding: 5px 14px; border-radius: 100px;
+    font-family: inherit; font-size: 0.85rem; cursor: pointer;
+    color: var(--azul); font-weight: 500;
+  }
+  .lang button.active { background: var(--azul); color: var(--creme); }
+
+  /* ── Typography ── */
+  h1 {
+    font-size: clamp(2.2rem, 5vw, 3.6rem);
+    font-weight: 700; line-height: 1.05; margin: 2rem 0 0.6rem;
+    color: var(--azul); letter-spacing: -0.02em;
+  }
+  .lede {
+    font-size: 1.15rem; color: var(--cinza); max-width: 60ch;
+    margin: 0 0 2rem;
+  }
+
+  /* ── Use-case grid ── */
+  .use-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 1rem; margin: 0 0 2.5rem;
+  }
+  @media (max-width: 480px) { .use-grid { grid-template-columns: 1fr; } }
+  .use-item {
+    background: rgba(255,255,255,0.55);
+    border-radius: 12px; padding: 1rem 1.2rem;
+  }
+  .use-item h3 {
+    font-size: 0.9rem; font-weight: 700; color: var(--azul);
+    margin: 0 0 0.25rem;
+  }
+  .use-item p { font-size: 0.85rem; color: var(--cinza); margin: 0; line-height: 1.4; }
+
+  /* ── Section diagram ── */
+  .diff {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+    margin: 0 0 2.5rem;
+  }
+  .diff > div {
+    background: rgba(255,255,255,0.5); border-radius: 12px;
+    padding: 1rem; text-align: center;
+  }
+  .diff svg { width: 100%; max-width: 220px; height: auto; }
+  .diff .lbl {
+    display: block; font-size: 0.85rem; font-weight: 600;
+    margin-top: 0.4rem;
+  }
+  .diff .bad .lbl { color: var(--vermelho); }
+  .diff .good .lbl { color: var(--azul); }
+
+  /* ── Cards ── */
+  .card {
+    background: white; border-radius: 14px; padding: 1.6rem 1.8rem;
+    margin: 1.2rem 0; box-shadow: 0 1px 3px rgba(32,56,166,0.08);
+  }
+  .card h2 {
+    font-size: 1.4rem; font-weight: 600; color: var(--azul);
+    margin: 0 0 0.3rem; display: flex; align-items: center; gap: 0.6rem;
+  }
+  .card h2 .num {
+    display: inline-flex; width: 30px; height: 30px; border-radius: 6px;
+    background: var(--laranja); color: white; align-items: center;
+    justify-content: center; font-size: 1rem; font-weight: 700; flex-shrink: 0;
+  }
+  .card p.sub { color: var(--cinza); margin: 0 0 1.2rem; font-size: 0.95rem; }
+
+  /* ── Drop zone ── */
+  .drop-zone {
+    border: 2px dashed rgba(32,56,166,0.25);
+    border-radius: 10px; padding: 2rem 1rem;
+    text-align: center; cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative; background: var(--creme);
+  }
+  .drop-zone.active { border-color: var(--laranja); background: #fff8f2; }
+  .drop-zone.has-file { border-color: var(--azul); background: #f0f4ff; }
+  .drop-zone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon { font-size: 2.4rem; display: block; line-height: 1; margin-bottom: 0.4rem; }
+  .drop-text { font-size: 0.95rem; color: var(--cinza); }
+  .drop-text strong { color: var(--azul); }
+  .file-name {
+    margin-top: 0.5rem; font-size: 0.85rem;
+    font-weight: 600; color: var(--laranja); display: none;
+  }
+
+  /* ── Sliders ── */
+  .params { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-bottom: 1rem; }
+  @media (max-width: 480px) { .params { grid-template-columns: 1fr; } }
+
+  label {
+    display: block; font-weight: 600; color: var(--azul);
+    margin: 0.9rem 0 0.3rem; font-size: 0.9rem;
+  }
+  .param-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 0.9rem; font-weight: 600; color: var(--azul); margin-bottom: 0.35rem;
+  }
+  .param-row .val { font-weight: 700; color: var(--laranja); font-size: 1rem; }
   input[type="range"] {
-    -webkit-appearance: none;
-    width: 100%;
-    height: 6px;
-    border-radius: 3px;
-    background: var(--cinza);
-    outline: none;
-    cursor: pointer;
+    -webkit-appearance: none; width: 100%; height: 6px;
+    border-radius: 3px; background: rgba(32,56,166,0.12); outline: none; cursor: pointer;
   }
   input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 20px; height: 20px;
-    border-radius: 50%;
-    background: var(--azul);
-    cursor: pointer;
-    border: 2px solid #fff;
-    box-shadow: 0 1px 4px var(--sombra);
-    transition: background 0.15s;
+    -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+    background: var(--azul); cursor: pointer; border: 2px solid white;
+    box-shadow: 0 1px 3px rgba(32,56,166,0.3); transition: background 0.15s;
   }
   input[type="range"]::-webkit-slider-thumb:hover { background: var(--laranja); }
   input[type="range"]::-moz-range-thumb {
-    width: 20px; height: 20px;
-    border-radius: 50%;
-    background: var(--azul);
-    cursor: pointer;
-    border: 2px solid #fff;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--azul); cursor: pointer; border: 2px solid white;
   }
-  .param-hint {
-    font-size: 0.72rem;
-    color: #888;
-    margin-top: 0.3rem;
-  }
+  .param-hint { font-size: 0.78rem; color: #999; margin-top: 0.25rem; }
 
-  /* ── Preview diagram ── */
-  .preview-wrap {
-    display: flex;
-    justify-content: center;
-    margin-top: 0.5rem;
-  }
+  /* ── Cross-section preview ── */
+  .preview-wrap { display: flex; justify-content: center; margin-top: 1rem; }
   #section-svg { width: 100%; max-width: 320px; height: auto; }
 
-  /* ── Button ── */
-  .btn-generate {
-    display: block;
-    width: 100%;
-    padding: 1rem;
-    background: var(--laranja);
-    color: #fff;
-    font-family: 'ASAP', sans-serif;
-    font-size: 1.05rem;
-    font-weight: 700;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-    letter-spacing: 0.02em;
-    transition: background 0.2s, transform 0.1s;
-    box-shadow: 0 3px 10px rgba(250,100,21,0.3);
+  /* ── Generate button ── */
+  button.go {
+    background: var(--azul); color: white; border: none;
+    padding: 0.85rem 1.8rem; border-radius: 8px; cursor: pointer;
+    font-family: inherit; font-weight: 600; font-size: 1rem;
+    margin-top: 1.2rem; transition: background 0.15s; width: 100%;
+    display: flex; align-items: center; justify-content: center; gap: 0.5rem;
   }
-  .btn-generate:hover { background: #e05510; }
-  .btn-generate:active { transform: scale(0.98); }
-  .btn-generate:disabled { background: #ccc; cursor: not-allowed; box-shadow: none; }
+  button.go:hover { background: #15267d; }
+  button.go:active { transform: scale(0.99); }
+  button.go:disabled { background: #ccc; cursor: not-allowed; }
 
   /* ── Status messages ── */
   .status {
-    display: none;
-    padding: 1rem 1.2rem;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    line-height: 1.5;
+    display: none; padding: 0.9rem 1.1rem; border-radius: 8px;
+    font-size: 0.9rem; font-weight: 500; line-height: 1.5; margin-top: 1rem;
   }
   .status.loading {
-    display: flex; align-items: center; gap: 0.8rem;
-    background: #eef2ff; color: var(--azul);
+    display: flex; align-items: center; gap: 0.7rem;
+    background: rgba(32,56,166,0.07); color: var(--azul);
   }
   .status.success {
-    display: flex; align-items: center; gap: 0.8rem;
-    background: #eaffea; color: #1a6b1a;
+    display: flex; align-items: flex-start; gap: 0.7rem;
+    background: rgba(30,140,50,0.08); color: #1a5e1a;
   }
   .status.error {
-    display: block;
-    background: #fff0f0; color: #b00;
+    display: block; background: rgba(242,58,47,0.08); color: var(--vermelho);
   }
   .spinner {
-    width: 22px; height: 22px; flex-shrink: 0;
-    border: 3px solid #c5cff5;
-    border-top-color: var(--azul);
-    border-radius: 50%;
+    width: 20px; height: 20px; flex-shrink: 0;
+    border: 2.5px solid rgba(32,56,166,0.2);
+    border-top-color: var(--azul); border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── Explainer ── */
-  .explainer {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
+  /* ── Notes ── */
+  details {
+    background: white; border-radius: 12px; padding: 1rem 1.4rem;
+    margin: 1rem 0; border-left: 4px solid var(--amarelo);
+    box-shadow: 0 1px 3px rgba(32,56,166,0.06);
   }
-  @media (max-width: 480px) { .explainer { grid-template-columns: 1fr; } }
-  .explain-item { display: flex; gap: 0.8rem; align-items: flex-start; }
-  .explain-icon { font-size: 1.5rem; flex-shrink: 0; margin-top: 2px; }
-  .explain-item h3 { font-size: 0.82rem; font-weight: 700; color: var(--azul); margin-bottom: 2px; }
-  .explain-item p { font-size: 0.78rem; color: #666; line-height: 1.4; }
+  details summary {
+    cursor: pointer; font-weight: 600; color: var(--azul); padding: 0.3rem 0;
+  }
+  details p, details ul { color: #444; font-size: 0.93rem; margin-top: 0.6rem; }
+  details li { margin: 0.3rem 0; }
 
   /* ── Footer ── */
   footer {
-    background: var(--azul);
-    color: rgba(255,255,255,0.7);
-    text-align: center;
-    padding: 1rem;
-    font-size: 0.72rem;
-    line-height: 1.6;
+    margin-top: 3rem; padding-top: 1.5rem;
+    border-top: 1px solid rgba(32,56,166,0.15);
+    font-size: 0.85rem; color: var(--cinza);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;
   }
-  footer a { color: rgba(255,255,255,0.9); }
+  footer a { color: var(--azul); text-decoration: none; font-weight: 500; }
+  footer a:hover { text-decoration: underline; }
 
-  /* ── Lang switcher ── */
-  .lang-switcher {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-  }
-  .lang-btn {
-    background: transparent;
-    border: 1.5px solid rgba(255,255,255,0.35);
-    color: rgba(255,255,255,0.75);
-    font-family: 'ASAP', sans-serif;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    padding: 3px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
-  }
-  .lang-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
-  .lang-btn.active {
-    background: rgba(255,255,255,0.22);
-    color: #fff;
-    border-color: rgba(255,255,255,0.7);
-  }
-  [data-lang] { display: none; }
-  [data-lang].visible { display: revert; }
+  /* ── i18n ── */
+  .en { display: none; }
+  .pt { display: inline; }
+  body.lang-en .en { display: inline; }
+  body.lang-en .pt { display: none; }
+  .en-block { display: none; }
+  .pt-block { display: block; }
+  body.lang-en .en-block { display: block; }
+  body.lang-en .pt-block { display: none; }
 </style>
 </head>
 <body>
+<div class="wrap">
 
 <header>
-  <div class="logo-block">
-    <!-- Buinho logo mark — square + circle Fröbel geometry, Educativo palette -->
-    <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-      <rect x="4" y="4" width="40" height="40" rx="4" fill="#FA6415"/>
-      <rect x="12" y="12" width="24" height="24" rx="2" fill="#FAF0E1"/>
-      <circle cx="24" cy="24" r="8" fill="#2038A6"/>
-    </svg>
-    <span class="logo-label">Buinho FabLab</span>
-  </div>
-  <div class="header-text">
-    <h1>SVG → STL<br><span data-lang="pt" class="visible">Arestas Arredondadas</span><span data-lang="en">Rounded Edges</span></h1>
-    <p data-lang="pt" class="visible">Transforma contornos SVG em paredes 3D com bordas superiores suavizadas — pronto para impressão tátil ou vacuum forming.</p>
-    <p data-lang="en">Convert SVG outlines into 3D walls with a smooth rounded top edge — ready for tactile printing or vacuum forming.</p>
-  </div>
-  <div class="lang-switcher">
-    <button class="lang-btn active" id="btnPT" onclick="setLang('pt')">PT</button>
-    <button class="lang-btn" id="btnEN" onclick="setLang('en')">EN</button>
+  <div class="brand">Buinho<span class="educ"> · educativo</span></div>
+  <div class="lang">
+    <button id="lang-pt" class="active" onclick="setLang('pt')">PT</button>
+    <button id="lang-en" onclick="setLang('en')">EN</button>
   </div>
 </header>
 
-<main>
+<h1>
+  <span class="pt">SVG → STL<br>Arestas Arredondadas</span>
+  <span class="en">SVG → STL<br>Rounded Edges</span>
+</h1>
 
-  <!-- Explainer -->
-  <div class="card">
-    <h2 data-lang="pt" class="visible">Para que serve</h2>
-    <h2 data-lang="en">What is this for</h2>
-    <div class="explainer">
-      <div class="explain-item">
-        <span class="explain-icon">✋</span>
-        <div>
-          <h3 data-lang="pt" class="visible">Impressão tátil</h3>
-          <h3 data-lang="en">Tactile printing</h3>
-          <p data-lang="pt" class="visible">Arestas vivas magoam os dedos. O fillet arredondado torna os modelos seguros para exploração tátil por alunos invisuais.</p>
-          <p data-lang="en">Sharp edges hurt fingers. The rounded fillet makes models safe for tactile exploration by visually impaired students.</p>
-        </div>
+<p class="lede">
+  <span class="pt">Transforma contornos SVG em paredes 3D com bordas superiores suavizadas — pronto para impressão tátil ou vacuum forming.</span>
+  <span class="en">Convert SVG outlines into 3D walls with smooth rounded top edges — ready for tactile printing or vacuum forming.</span>
+</p>
+
+<!-- Before/after diagram -->
+<div class="diff">
+  <div class="bad">
+    <svg viewBox="0 0 120 70" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="50" width="120" height="20" fill="#ddd" stroke="#aaa" stroke-width="0.8"/>
+      <path d="M 40 20 L 40 50 L 80 50 L 80 20 Z" fill="#ccc" stroke="#888" stroke-width="1.2"/>
+      <line x1="32" y1="14" x2="40" y2="20" stroke="#F23A2F" stroke-width="1.5" marker-end="url(#arr-r)"/>
+      <line x1="88" y1="14" x2="80" y2="20" stroke="#F23A2F" stroke-width="1.5" marker-end="url(#arr-r)"/>
+      <text x="30" y="11" font-size="6" fill="#F23A2F" text-anchor="end" font-family="Asap,sans-serif">!</text>
+      <text x="90" y="11" font-size="6" fill="#F23A2F" font-family="Asap,sans-serif">!</text>
+      <defs>
+        <marker id="arr-r" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#F23A2F"/>
+        </marker>
+      </defs>
+    </svg>
+    <span class="lbl pt">Aresta viva a 90°</span>
+    <span class="lbl en">Sharp 90° edge</span>
+  </div>
+  <div class="good">
+    <svg viewBox="0 0 120 70" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="50" width="120" height="20" fill="#ddd" stroke="#aaa" stroke-width="0.8"/>
+      <path d="M 40 50 L 40 34 Q 40 20 54 20 L 66 20 Q 80 20 80 34 L 80 50 Z"
+            fill="rgba(32,56,166,0.18)" stroke="#2038A6" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M 40 34 Q 40 20 54 20" fill="none" stroke="#FA6415" stroke-width="2" stroke-linecap="round"/>
+      <path d="M 66 20 Q 80 20 80 34" fill="none" stroke="#FA6415" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <span class="lbl pt">Fillet arredondado</span>
+    <span class="lbl en">Rounded fillet</span>
+  </div>
+</div>
+
+<!-- Use cases -->
+<div class="use-grid">
+  <div class="use-item">
+    <h3>✋ <span class="pt">Impressão tátil</span><span class="en">Tactile printing</span></h3>
+    <p class="pt">Arestas vivas magoam os dedos. O fillet torna os modelos seguros para exploração tátil por alunos invisuais.</p>
+    <p class="en">Sharp edges hurt fingers. The fillet makes models safe for tactile exploration by visually impaired students.</p>
+  </div>
+  <div class="use-item">
+    <h3>🔵 Vacuum forming</h3>
+    <p class="pt">Arestas a 90° rasgam o plástico. Um raio de fillet suave distribui a tensão e evita defeitos no produto final.</p>
+    <p class="en">90° edges tear plastic. A smooth fillet radius distributes tension and prevents defects in the final product.</p>
+  </div>
+  <div class="use-item">
+    <h3>📐 <span class="pt">Importar SVG</span><span class="en">Import SVG</span></h3>
+    <p class="pt">Exporta do Tinkercad, Inkscape ou Illustrator como SVG com paths fechados. O gerador faz o resto.</p>
+    <p class="en">Export from Tinkercad, Inkscape or Illustrator as SVG with closed paths. The generator does the rest.</p>
+  </div>
+  <div class="use-item">
+    <h3>📦 <span class="pt">STL para slicer</span><span class="en">STL for slicer</span></h3>
+    <p class="pt">O ficheiro gerado é watertight e importável no Tinkercad, PrusaSlicer, Cura ou qualquer slicer.</p>
+    <p class="en">The generated file is watertight and ready for Tinkercad, PrusaSlicer, Cura or any slicer.</p>
+  </div>
+</div>
+
+<!-- Card 1: Upload -->
+<div class="card">
+  <h2>
+    <span class="num">1</span>
+    <span class="pt">Ficheiro SVG</span>
+    <span class="en">SVG File</span>
+  </h2>
+  <p class="sub">
+    <span class="pt">Paths fechados. Funciona com desenhos do Tinkercad, Inkscape ou Illustrator.</span>
+    <span class="en">Closed paths. Works with designs from Tinkercad, Inkscape or Illustrator.</span>
+  </p>
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="svgFile" accept=".svg,image/svg+xml">
+    <span class="drop-icon">📂</span>
+    <div class="drop-text">
+      <span class="pt"><strong>Clica</strong> ou arrasta um ficheiro SVG para aqui</span>
+      <span class="en"><strong>Click</strong> or drag an SVG file here</span>
+    </div>
+    <div class="file-name" id="fileName"></div>
+  </div>
+</div>
+
+<!-- Card 2: Parameters -->
+<div class="card">
+  <h2>
+    <span class="num">2</span>
+    <span class="pt">Parâmetros</span>
+    <span class="en">Parameters</span>
+  </h2>
+  <p class="sub">
+    <span class="pt">Ajusta a altura da parede e o raio do arredondamento.</span>
+    <span class="en">Adjust wall height and rounding radius.</span>
+  </p>
+  <div class="params">
+    <div>
+      <div class="param-row">
+        <span class="pt">Altura da parede</span><span class="en">Wall height</span>
+        <span class="val" id="heightVal">5.0 mm</span>
       </div>
-      <div class="explain-item">
-        <span class="explain-icon">🔵</span>
-        <div>
-          <h3>Vacuum forming</h3>
-          <p data-lang="pt" class="visible">Matrizes com arestas a 90° rasgam o plástico. Um raio de fillet suave distribui a tensão e evita defeitos no produto final.</p>
-          <p data-lang="en">90° edges tear plastic sheets. A smooth fillet radius distributes tension and prevents defects in the final product.</p>
-        </div>
+      <input type="range" id="wallHeight" min="1" max="30" step="0.5" value="5">
+      <div class="param-hint">
+        <span class="pt">Altura total extrudida</span>
+        <span class="en">Total extruded height</span>
       </div>
-      <div class="explain-item">
-        <span class="explain-icon">📐</span>
-        <div>
-          <h3 data-lang="pt" class="visible">Importar SVG</h3>
-          <h3 data-lang="en">Import SVG</h3>
-          <p data-lang="pt" class="visible">Exporta o teu desenho do Tinkercad, Inkscape ou Illustrator como SVG com paths fechados. O gerador faz o resto.</p>
-          <p data-lang="en">Export your drawing from Tinkercad, Inkscape or Illustrator as an SVG with closed paths. The generator does the rest.</p>
-        </div>
+    </div>
+    <div>
+      <div class="param-row">
+        <span class="pt">Raio do fillet</span><span class="en">Fillet radius</span>
+        <span class="val" id="filletVal">1.0 mm</span>
       </div>
-      <div class="explain-item">
-        <span class="explain-icon">📦</span>
-        <div>
-          <h3 data-lang="pt" class="visible">STL direto para slicer</h3>
-          <h3 data-lang="en">STL ready for slicer</h3>
-          <p data-lang="pt" class="visible">O ficheiro gerado é watertight e importável directamente no Tinkercad, PrusaSlicer, Cura ou qualquer slicer.</p>
-          <p data-lang="en">The generated file is watertight and can be imported directly into Tinkercad, PrusaSlicer, Cura or any slicer.</p>
-        </div>
+      <input type="range" id="filletRadius" min="0.2" max="8" step="0.1" value="1">
+      <div class="param-hint">
+        <span class="pt">Arredondamento superior (≤ metade da altura)</span>
+        <span class="en">Top rounding (≤ half the wall height)</span>
       </div>
     </div>
   </div>
-
-  <!-- Upload -->
-  <div class="card">
-    <h2 data-lang="pt" class="visible">1 · Ficheiro SVG</h2>
-    <h2 data-lang="en">1 · SVG File</h2>
-    <div class="drop-zone" id="dropZone">
-      <input type="file" id="svgFile" accept=".svg,image/svg+xml">
-      <span class="drop-icon">📂</span>
-      <div class="drop-text">
-        <span data-lang="pt" class="visible"><strong>Clica</strong> ou arrasta um ficheiro SVG para aqui</span>
-        <span data-lang="en"><strong>Click</strong> or drag an SVG file here</span>
-      </div>
-      <div class="file-name" id="fileName"></div>
-    </div>
+  <div class="preview-wrap">
+    <svg id="section-svg" viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg">
+      <!-- drawn by JS -->
+    </svg>
   </div>
+</div>
 
-  <!-- Parameters -->
-  <div class="card">
-    <h2 data-lang="pt" class="visible">2 · Parâmetros</h2>
-    <h2 data-lang="en">2 · Parameters</h2>
-    <div class="params">
-      <div class="param-group">
-        <label>
-          <span data-lang="pt" class="visible">Altura da parede</span>
-          <span data-lang="en">Wall height</span>
-          <span class="val" id="heightVal">5.0 mm</span>
-        </label>
-        <input type="range" id="wallHeight" min="1" max="30" step="0.5" value="5">
-        <div class="param-hint">
-          <span data-lang="pt" class="visible">Altura total da parede extrudida</span>
-          <span data-lang="en">Total extruded wall height</span>
-        </div>
-      </div>
-      <div class="param-group">
-        <label>
-          <span data-lang="pt" class="visible">Raio do fillet</span>
-          <span data-lang="en">Fillet radius</span>
-          <span class="val" id="filletVal">1.0 mm</span>
-        </label>
-        <input type="range" id="filletRadius" min="0.2" max="8" step="0.1" value="1">
-        <div class="param-hint">
-          <span data-lang="pt" class="visible">Raio do arredondamento superior (≤ metade da altura)</span>
-          <span data-lang="en">Top rounding radius (≤ half the wall height)</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Cross-section preview SVG -->
-    <div class="preview-wrap">
-      <svg id="section-svg" viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg">
-        <!-- drawn by JS -->
-      </svg>
-    </div>
+<!-- Card 3: Generate -->
+<div class="card">
+  <h2>
+    <span class="num">3</span>
+    <span class="pt">Gerar STL</span>
+    <span class="en">Generate STL</span>
+  </h2>
+  <p class="sub">
+    <span class="pt">O fillet é ajustado automaticamente se a forma for complexa.</span>
+    <span class="en">Fillet is automatically adjusted for complex shapes.</span>
+  </p>
+  <button class="go" id="btnGenerate" disabled>
+    <span>⬇</span>
+    <span class="pt">Gerar STL com Arestas Arredondadas</span>
+    <span class="en">Generate STL with Rounded Edges</span>
+  </button>
+  <div class="status loading" id="statusLoading">
+    <div class="spinner"></div>
+    <span class="pt">A processar o SVG e a gerar geometria 3D…</span>
+    <span class="en">Processing SVG and generating 3D geometry…</span>
   </div>
-
-  <!-- Generate -->
-  <div class="card">
-    <h2 data-lang="pt" class="visible">3 · Gerar STL</h2>
-    <h2 data-lang="en">3 · Generate STL</h2>
-    <button class="btn-generate" id="btnGenerate" disabled>
-      <span data-lang="pt" class="visible">Gerar STL com Arestas Arredondadas</span>
-      <span data-lang="en">Generate STL with Rounded Edges</span>
-    </button>
-    <div class="status loading" id="statusLoading">
-      <div class="spinner"></div>
-      <span data-lang="pt" class="visible">A processar o SVG e a gerar geometria 3D… pode demorar alguns segundos.</span>
-      <span data-lang="en">Processing SVG and generating 3D geometry… this may take a few seconds.</span>
-    </div>
-    <div class="status success" id="statusSuccess">
-      <span>✅</span>
-      <span id="successMsg"></span>
-    </div>
-    <div class="status error" id="statusError"></div>
+  <div class="status success" id="statusSuccess">
+    <span>✅</span>
+    <span id="successMsg"></span>
   </div>
+  <div class="status error" id="statusError"></div>
+</div>
 
-</main>
+<!-- Technical notes -->
+<details>
+  <summary>
+    <span class="pt">📋 Notas técnicas</span>
+    <span class="en">📋 Technical notes</span>
+  </summary>
+  <ul>
+    <li class="pt">O SVG deve ter paths fechados. Paths abertos são convertidos em paredes com espessura de 2 mm.</li>
+    <li class="en">The SVG must have closed paths. Open paths are converted to 2 mm thick walls.</li>
+    <li class="pt">O fillet é calculado por ring — formas complexas com features estreitas recebem um raio efectivo inferior ao pedido.</li>
+    <li class="en">Fillet is calculated per ring — complex shapes with narrow features receive a lower effective radius than requested.</li>
+    <li class="pt">O STL gerado é watertight (manifold) e pronto para impressão 3D sem reparações.</li>
+    <li class="en">The generated STL is watertight (manifold) and ready for 3D printing without repairs.</li>
+    <li class="pt">Ao importar no Tinkercad com múltiplas figuras, selecciona tudo e agrupa (Ctrl+G).</li>
+    <li class="en">When importing into Tinkercad with multiple shapes, select all and group (Ctrl+G).</li>
+  </ul>
+</details>
 
 <footer>
-  Buinho FabLab · Messejana, Alentejo, Portugal · <a href="https://buinho.pt" target="_blank">buinho.pt</a><br>
-  <span data-lang="pt" class="visible">Licença</span><span data-lang="en">Licence</span>
-  <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">CC-BY-SA 4.0</a>
-  · <span data-lang="pt" class="visible">Ferramenta open-source para educação maker e acessibilidade</span><span data-lang="en">Open-source tool for maker education and accessibility</span>
+  <span>
+    Buinho FabLab · Messejana, Alentejo ·
+    <a href="https://buinho.pt" target="_blank">buinho.pt</a>
+  </span>
+  <span>
+    <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">CC-BY-SA 4.0</a>
+    · <a href="https://github.com/Buinho-Creative-Hub/svg-fillet-generator" target="_blank">GitHub</a>
+  </span>
 </footer>
+
+</div><!-- .wrap -->
 
 <script>
 // ── Language switcher ─────────────────────────────────────────────
 function setLang(lang) {
-  document.querySelectorAll('[data-lang]').forEach(el => {
-    el.classList.toggle('visible', el.dataset.lang === lang);
-  });
-  document.getElementById('btnPT').classList.toggle('active', lang === 'pt');
-  document.getElementById('btnEN').classList.toggle('active', lang === 'en');
+  document.body.className = 'lang-' + lang;
+  document.getElementById('lang-pt').classList.toggle('active', lang === 'pt');
+  document.getElementById('lang-en').classList.toggle('active', lang === 'en');
   document.documentElement.lang = lang;
   localStorage.setItem('svg_stl_lang', lang);
   window._lang = lang;
 }
-// Restore saved language on load
 (function() {
   const saved = localStorage.getItem('svg_stl_lang') ||
     (navigator.language.startsWith('pt') ? 'pt' : 'en');
   setLang(saved);
 })();
 
-const dropZone = document.getElementById('dropZone');
-const fileInput = document.getElementById('svgFile');
-const fileName  = document.getElementById('fileName');
-const btnGen    = document.getElementById('btnGenerate');
-const wallSlider   = document.getElementById('wallHeight');
+const dropZone    = document.getElementById('dropZone');
+const fileInput   = document.getElementById('svgFile');
+const fileName    = document.getElementById('fileName');
+const btnGen      = document.getElementById('btnGenerate');
+const wallSlider  = document.getElementById('wallHeight');
 const filletSlider = document.getElementById('filletRadius');
-const heightVal = document.getElementById('heightVal');
-const filletVal = document.getElementById('filletVal');
-const sectionSvg = document.getElementById('section-svg');
+const heightVal   = document.getElementById('heightVal');
+const filletVal   = document.getElementById('filletVal');
+const sectionSvg  = document.getElementById('section-svg');
 
 let selectedFile = null;
 
@@ -514,7 +487,7 @@ dropZone.addEventListener('drop', e => {
 });
 function setFile(f) {
   if (!f.name.toLowerCase().endsWith('.svg')) {
-    showError('Por favor escolhe um ficheiro .svg');
+    showError(window._lang === 'en' ? 'Please choose an .svg file.' : 'Por favor escolhe um ficheiro .svg.');
     return;
   }
   selectedFile = f;
@@ -529,7 +502,6 @@ function setFile(f) {
 wallSlider.addEventListener('input', () => {
   const h = parseFloat(wallSlider.value);
   heightVal.textContent = h.toFixed(1) + ' mm';
-  // Clamp fillet ≤ h/2
   const maxF = h / 2;
   if (parseFloat(filletSlider.value) > maxF) {
     filletSlider.value = maxF.toFixed(1);
@@ -544,131 +516,69 @@ filletSlider.addEventListener('input', () => {
 });
 
 // ── Cross-section preview ─────────────────────────────────────────
-// Shows the wall profile: flat bottom, vertical sides, rounded top edges.
-// SVG coordinate system: Y increases downward.
-// Wall sits with base at bottom, rounded cap at top.
 function drawSection() {
   const H = parseFloat(wallSlider.value);
   const R = parseFloat(filletSlider.value);
 
-  // Fixed display dimensions (mm → px mapping fits inside 200×140 viewBox)
   const VW = 200, VH = 140;
   const margin = { left: 38, right: 18, top: 18, bottom: 22 };
-  const availH = VH - margin.top - margin.bottom;  // 100px
-  const availW = VW - margin.left - margin.right;   // 144px
+  const availH = VH - margin.top - margin.bottom;
+  const availW = VW - margin.left - margin.right;
 
-  const scale = availH / Math.max(H, 8);  // px per mm, capped so tall walls fit
+  const scale = availH / Math.max(H, 8);
   const Hpx = H * scale;
   const Rpx = Math.min(R * scale, Hpx * 0.48);
-  const Wpx = Math.min(availW * 0.55, Hpx * 1.4); // wall width proportional but bounded
+  const Wpx = Math.min(availW * 0.55, Hpx * 1.4);
 
-  // Anchor: bottom-left of wall
-  const bx = margin.left + (availW - Wpx) / 2;  // horizontally centred
-  const by = margin.top + availH;                 // bottom of wall
+  const bx = margin.left + (availW - Wpx) / 2;
+  const by = margin.top + availH;
+  const topY = by - Hpx;
+  const arcBaseY = topY + Rpx;
 
-  const topY    = by - Hpx;          // top surface Y
-  const arcBaseY = topY + Rpx;       // where straight section ends, arc begins
-
-  // Build the cross-section profile path (one half-slice showing left wall + top)
-  // Points go: bottom-left → up straight section → quarter-arc outward-left →
-  //            across top → quarter-arc outward-right → down → bottom-right → close
   const arcN = 20;
   let pts = [];
-
-  // bottom-left
   pts.push([bx, by]);
-  // straight left wall up to arc start
   pts.push([bx, arcBaseY]);
-  // LEFT top arc: centre at (bx, topY), arc goes from 180° → 270° (outward = left = -x)
-  for (let i = 0; i <= arcN; i++) {
-    const a = Math.PI + (Math.PI / 2) * (i / arcN); // 180° → 270°
-    const x = bx + Rpx * Math.cos(a);   // bx - Rpx*cos → bx
-    const y = topY + Rpx * Math.sin(a); // topY → topY + Rpx = arcBaseY
-    // Remap: at i=0 (180°): x=bx-Rpx, y=topY  → outside-left, top
-    //        at i=arcN(270°): x=bx, y=topY+Rpx  → wall face, arc-base ✓
-    // Actually we want: start at (bx, arcBaseY) going UP and curving inward to (bx+Rpx, topY)
-    // Use: angle 270°→360°, centre at (bx+Rpx, arcBaseY)
-    pts.pop(); // remove last, rebuild below
-    break;
-  }
-  // Redo left arc: centre at (bx + Rpx, arcBaseY), quarter from 180° to 90° (going up-left)
-  pts.push([bx, arcBaseY]); // start of arc on left face
   for (let i = 1; i <= arcN; i++) {
-    const a = Math.PI - (Math.PI / 2) * (i / arcN); // 180° → 90°
-    const x = (bx + Rpx) + Rpx * Math.cos(a); // bx+Rpx - Rpx → bx+Rpx+0 ... wait
-    // Centre = (bx + Rpx, arcBaseY); radius = Rpx
-    // At a=180°: x=bx+Rpx-Rpx=bx, y=arcBaseY ✓ (on left wall face)
-    // At a=90°:  x=bx+Rpx, y=arcBaseY-Rpx=topY ✓ (on top surface)
+    const a = Math.PI - (Math.PI / 2) * (i / arcN);
     const px = (bx + Rpx) + Rpx * Math.cos(a);
-    const py = arcBaseY   + Rpx * Math.sin(a);  // sin(180°)=0, sin(90°)=1 → goes UP (lower y)
-    // sin(180°→90°): 0 → 1, so py goes from arcBaseY → arcBaseY+Rpx  — that's DOWN, not up
-    // Fix: negate sin
-    const px2 = (bx + Rpx) + Rpx * Math.cos(a);
-    const py2 = arcBaseY   - Rpx * Math.sin(a); // arcBaseY → arcBaseY-Rpx = topY ✓
-    pts.push([px2, py2]);
+    const py = arcBaseY   - Rpx * Math.sin(a);
+    pts.push([px, py]);
   }
-  // top surface: from (bx+Rpx, topY) to (bx+Wpx-Rpx, topY)
   pts.push([bx + Wpx - Rpx, topY]);
-  // RIGHT top arc: centre at (bx+Wpx-Rpx, arcBaseY), quarter from 90°→0°
   for (let i = 1; i <= arcN; i++) {
-    const a = (Math.PI / 2) * (1 - i / arcN); // 90° → 0°
+    const a = (Math.PI / 2) * (1 - i / arcN);
     const px = (bx + Wpx - Rpx) + Rpx * Math.cos(a);
     const py = arcBaseY          - Rpx * Math.sin(a);
     pts.push([px, py]);
   }
-  // straight right wall down
   pts.push([bx + Wpx, by]);
 
   const d = 'M' + pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' L') + ' Z';
 
-  // Dimension annotations
-  const dimX = bx - 6;           // left of wall
+  const dimX = bx - 6;
   const hLabelY = (by + topY) / 2 + 4;
   const rLabelY = (arcBaseY + topY) / 2 + 3;
-  const baseY = by + 10;
 
   sectionSvg.innerHTML = `
     <rect width="${VW}" height="${VH}" fill="#f9f6f1" rx="8"/>
-
-    <!-- Ground line -->
-    <line x1="${bx - 4}" y1="${by}" x2="${bx + Wpx + 4}" y2="${by}"
-          stroke="#bbb" stroke-width="1"/>
-
-    <!-- Wall shape -->
-    <path d="${d}" fill="#2038A6" fill-opacity="0.15"
-          stroke="#2038A6" stroke-width="1.8" stroke-linejoin="round"/>
-
-    <!-- Fillet arc highlight in orange -->
-    <path d="M${bx.toFixed(1)},${arcBaseY.toFixed(1)}
-             ${pts.slice(1, arcN+2).map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}"
+    <line x1="${bx - 4}" y1="${by}" x2="${bx + Wpx + 4}" y2="${by}" stroke="#bbb" stroke-width="1"/>
+    <path d="${d}" fill="rgba(32,56,166,0.12)" stroke="#2038A6" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M${bx.toFixed(1)},${arcBaseY.toFixed(1)} ${pts.slice(1, arcN+2).map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}"
           fill="none" stroke="#FA6415" stroke-width="2" stroke-linecap="round"/>
-    <path d="M${(bx+Wpx-Rpx).toFixed(1)},${topY.toFixed(1)}
-             ${pts.slice(arcN+3, arcN*2+4).map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}"
+    <path d="M${(bx+Wpx-Rpx).toFixed(1)},${topY.toFixed(1)} ${pts.slice(arcN+3, arcN*2+4).map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}"
           fill="none" stroke="#FA6415" stroke-width="2" stroke-linecap="round"/>
-
-    <!-- Height dimension line -->
-    <line x1="${dimX}" y1="${by}" x2="${dimX}" y2="${topY}"
-          stroke="#FA6415" stroke-width="1.2" stroke-dasharray="3,2"/>
+    <line x1="${dimX}" y1="${by}" x2="${dimX}" y2="${topY}" stroke="#FA6415" stroke-width="1.2" stroke-dasharray="3,2"/>
     <line x1="${dimX-3}" y1="${by}" x2="${dimX+3}" y2="${by}" stroke="#FA6415" stroke-width="1.5"/>
     <line x1="${dimX-3}" y1="${topY}" x2="${dimX+3}" y2="${topY}" stroke="#FA6415" stroke-width="1.5"/>
-    <text x="${dimX - 4}" y="${hLabelY}" text-anchor="end"
-          font-family="ASAP,sans-serif" font-size="10" font-weight="700" fill="#FA6415">${H.toFixed(1)}mm</text>
-
-    <!-- Fillet radius dimension -->
+    <text x="${dimX - 4}" y="${hLabelY}" text-anchor="end" font-family="Asap,sans-serif" font-size="10" font-weight="700" fill="#FA6415">${H.toFixed(1)}mm</text>
     ${Rpx > 6 ? `
-    <line x1="${(bx+Wpx+6).toFixed(1)}" y1="${arcBaseY.toFixed(1)}"
-          x2="${(bx+Wpx+6).toFixed(1)}" y2="${topY.toFixed(1)}"
-          stroke="#2038A6" stroke-width="1" stroke-dasharray="2,2"/>
-    <text x="${(bx+Wpx+10).toFixed(1)}" y="${rLabelY.toFixed(1)}"
-          font-family="ASAP,sans-serif" font-size="9" font-weight="700" fill="#2038A6">r=${R.toFixed(1)}</text>
+    <line x1="${(bx+Wpx+6).toFixed(1)}" y1="${arcBaseY.toFixed(1)}" x2="${(bx+Wpx+6).toFixed(1)}" y2="${topY.toFixed(1)}" stroke="#2038A6" stroke-width="1" stroke-dasharray="2,2"/>
+    <text x="${(bx+Wpx+10).toFixed(1)}" y="${rLabelY.toFixed(1)}" font-family="Asap,sans-serif" font-size="9" font-weight="700" fill="#2038A6">r=${R.toFixed(1)}</text>
     ` : `
-    <text x="${(bx+Wpx/2).toFixed(1)}" y="${(topY-5).toFixed(1)}"
-          text-anchor="middle" font-family="ASAP,sans-serif" font-size="8" fill="#2038A6">r=${R.toFixed(1)}mm</text>
+    <text x="${(bx+Wpx/2).toFixed(1)}" y="${(topY-5).toFixed(1)}" text-anchor="middle" font-family="Asap,sans-serif" font-size="8" fill="#2038A6">r=${R.toFixed(1)}mm</text>
     `}
-
-    <!-- Label -->
-    <text x="${(bx+Wpx/2).toFixed(1)}" y="${(by+16).toFixed(1)}"
-          text-anchor="middle" font-family="ASAP,sans-serif" font-size="8" fill="#999">secção transversal</text>
+    <text x="${(bx+Wpx/2).toFixed(1)}" y="${(by+16).toFixed(1)}" text-anchor="middle" font-family="Asap,sans-serif" font-size="8" fill="#999">secção transversal</text>
   `;
 }
 drawSection();
@@ -695,7 +605,6 @@ btnGen.addEventListener('click', async () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    // filename from Content-Disposition or default
     const cd = resp.headers.get('Content-Disposition') || '';
     const match = cd.match(/filename="([^"]+)"/);
     a.download = match ? match[1] : 'buinho_fillet.stl';
@@ -706,21 +615,16 @@ btnGen.addEventListener('click', async () => {
     document.getElementById('statusLoading').style.display = 'none';
     document.getElementById('statusSuccess').style.display = 'flex';
     const effR2 = resp.headers.get('X-Fillet-Effective');
-    const reqR2 = resp.headers.get('X-Fillet-Requested');
     const wasCapped = resp.headers.get('X-Fillet-Capped') === 'true';
     const lang = window._lang || 'pt';
     let msg;
     if (lang === 'en') {
-      msg = `✅ STL generated! (wall ${wallSlider.value}mm · fillet ${filletSlider.value}mm)`;
-      if (wasCapped && effR2) {
-        msg += ` — ⚠️ fillet reduced to ${parseFloat(effR2).toFixed(2)}mm (complex shape)`;
-      }
+      msg = `STL generated! (wall ${wallSlider.value}mm · fillet ${filletSlider.value}mm)`;
+      if (wasCapped && effR2) msg += ` — ⚠️ fillet reduced to ${parseFloat(effR2).toFixed(2)}mm (complex shape)`;
       msg += ' · If importing into Tinkercad, select all and group (Ctrl+G).';
     } else {
-      msg = `✅ STL gerado! (parede ${wallSlider.value}mm · fillet ${filletSlider.value}mm)`;
-      if (wasCapped && effR2) {
-        msg += ` — ⚠️ fillet reduzido para ${parseFloat(effR2).toFixed(2)}mm (forma complexa)`;
-      }
+      msg = `STL gerado! (parede ${wallSlider.value}mm · fillet ${filletSlider.value}mm)`;
+      if (wasCapped && effR2) msg += ` — ⚠️ fillet reduzido para ${parseFloat(effR2).toFixed(2)}mm (forma complexa)`;
       msg += ' · Se importares no Tinkercad, selecciona tudo e agrupa (Ctrl+G).';
     }
     document.getElementById('successMsg').textContent = msg;
@@ -745,8 +649,8 @@ function showError(msg) {
 }
 </script>
 </body>
-</html>
-"""
+</html>"""
+
 
 @app.route('/')
 def index():
