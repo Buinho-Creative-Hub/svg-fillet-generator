@@ -192,7 +192,7 @@ def svg_to_polygons(svg_bytes):
 
 # ─── 3-D geometry ─────────────────────────────────────────────────────────────
 
-def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=8):
+def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=24):
     """
     Watertight mesh via stacked extrusions:
     - Straight section: extrude_polygon(polygon, straight_h)
@@ -220,7 +220,7 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=8):
         curr_z = straight_h + v
         slice_h = curr_z - prev_z
 
-        inset = polygon.buffer(-u)
+        inset = polygon.buffer(-u, resolution=4)  # resolution=4: fast, smooth enough for 3D printing
         if inset.is_empty or inset.area < 0.01:
             break
         if isinstance(inset, MultiPolygon):
@@ -246,7 +246,7 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=8):
     return mesh
 
 
-def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=8):
+def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=24):
     """Main entry point. Returns binary STL bytes."""
     polygons = svg_to_polygons(svg_bytes)
     if not polygons:
