@@ -712,12 +712,21 @@ def generate():
     stem = os.path.splitext(svg_file.filename)[0]
     out_name = f"{stem}_fillet_{eff_r:.2f}mm.stl"
 
-    return send_file(
+    response = send_file(
         io.BytesIO(stl_bytes),
         as_attachment=True,
         download_name=out_name,
         mimetype='application/octet-stream'
     )
+    eff_r_val = float(info.get('fillet_effective_mm', fillet_radius))
+    was_capped = bool(info.get('fillet_capped', False))
+    response.headers['X-Fillet-Requested'] = str(round(fillet_radius, 3))
+    response.headers['X-Fillet-Effective'] = str(round(eff_r_val, 3))
+    response.headers['X-Fillet-Capped']    = 'true' if was_capped else 'false'
+    response.headers['Access-Control-Expose-Headers'] = (
+        'X-Fillet-Requested, X-Fillet-Effective, X-Fillet-Capped'
+    )
+    return response
 
 
 if __name__ == '__main__':
