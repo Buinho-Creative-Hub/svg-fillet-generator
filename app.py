@@ -644,7 +644,7 @@ btnGen.addEventListener('click', async () => {
     document.getElementById('statusLoading').style.display = 'none';
     document.getElementById('statusSuccess').style.display = 'flex';
     document.getElementById('successMsg').textContent =
-      `✅ STL gerado com sucesso! (parede ${wallSlider.value}mm · fillet ${filletSlider.value}mm) · Download iniciado.`;
+      `✅ STL gerado! (parede ${wallSlider.value}mm · fillet ${filletSlider.value}mm) · Se importares no Tinkercad, selecciona tudo e agrupa (Ctrl+G).`;
   } catch (e) {
     showError(e.message);
   } finally {
