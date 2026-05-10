@@ -17,7 +17,7 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SVG → STL com Arestas Arredondadas · Buinho FabLab</title>
+<title>SVG → STL · Rounded Edges · Buinho FabLab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=ASAP:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <style>
@@ -288,16 +288,35 @@ HTML = r"""<!DOCTYPE html>
   }
   footer a { color: rgba(255,255,255,0.9); }
 
-  /* ── EN section ── */
-  details { border-top: 1px solid var(--cinza); margin-top: 0.8rem; padding-top: 0.8rem; }
-  details summary {
-    cursor: pointer;
-    font-size: 0.78rem;
-    color: var(--azul);
-    font-weight: 600;
-    letter-spacing: 0.05em;
+  /* ── Lang switcher ── */
+  .lang-switcher {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
   }
-  details p { margin-top: 0.6rem; font-size: 0.8rem; color: #555; line-height: 1.5; }
+  .lang-btn {
+    background: transparent;
+    border: 1.5px solid rgba(255,255,255,0.35);
+    color: rgba(255,255,255,0.75);
+    font-family: 'ASAP', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .lang-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
+  .lang-btn.active {
+    background: rgba(255,255,255,0.22);
+    color: #fff;
+    border-color: rgba(255,255,255,0.7);
+  }
+  [data-lang] { display: none; }
+  [data-lang].visible { display: revert; }
 </style>
 </head>
 <body>
@@ -313,8 +332,13 @@ HTML = r"""<!DOCTYPE html>
     <span class="logo-label">Buinho FabLab</span>
   </div>
   <div class="header-text">
-    <h1>SVG → STL<br>Arestas Arredondadas</h1>
-    <p>Transforma contornos SVG em paredes 3D com bordas superiores suavizadas — pronto para impressão tátil ou vacuum forming.</p>
+    <h1>SVG → STL<br><span data-lang="pt" class="visible">Arestas Arredondadas</span><span data-lang="en">Rounded Edges</span></h1>
+    <p data-lang="pt" class="visible">Transforma contornos SVG em paredes 3D com bordas superiores suavizadas — pronto para impressão tátil ou vacuum forming.</p>
+    <p data-lang="en">Convert SVG outlines into 3D walls with a smooth rounded top edge — ready for tactile printing or vacuum forming.</p>
+  </div>
+  <div class="lang-switcher">
+    <button class="lang-btn active" id="btnPT" onclick="setLang('pt')">PT</button>
+    <button class="lang-btn" id="btnEN" onclick="setLang('en')">EN</button>
   </div>
 </header>
 
@@ -322,74 +346,90 @@ HTML = r"""<!DOCTYPE html>
 
   <!-- Explainer -->
   <div class="card">
-    <h2>Para que serve</h2>
+    <h2 data-lang="pt" class="visible">Para que serve</h2>
+    <h2 data-lang="en">What is this for</h2>
     <div class="explainer">
       <div class="explain-item">
         <span class="explain-icon">✋</span>
         <div>
-          <h3>Impressão tátil</h3>
-          <p>Arestas vivas magoam os dedos. O fillet arredondado torna os modelos seguros para exploração tátil por alunos invisuais.</p>
+          <h3 data-lang="pt" class="visible">Impressão tátil</h3>
+          <h3 data-lang="en">Tactile printing</h3>
+          <p data-lang="pt" class="visible">Arestas vivas magoam os dedos. O fillet arredondado torna os modelos seguros para exploração tátil por alunos invisuais.</p>
+          <p data-lang="en">Sharp edges hurt fingers. The rounded fillet makes models safe for tactile exploration by visually impaired students.</p>
         </div>
       </div>
       <div class="explain-item">
         <span class="explain-icon">🔵</span>
         <div>
           <h3>Vacuum forming</h3>
-          <p>Matrizes com arestas a 90° rasgam o plástico. Um raio de fillet suave distribui a tensão e evita defeitos no produto final.</p>
+          <p data-lang="pt" class="visible">Matrizes com arestas a 90° rasgam o plástico. Um raio de fillet suave distribui a tensão e evita defeitos no produto final.</p>
+          <p data-lang="en">90° edges tear plastic sheets. A smooth fillet radius distributes tension and prevents defects in the final product.</p>
         </div>
       </div>
       <div class="explain-item">
         <span class="explain-icon">📐</span>
         <div>
-          <h3>Importar SVG</h3>
-          <p>Exporta o teu desenho do Tinkercad, Inkscape ou Illustrator como SVG com paths fechados. O gerador faz o resto.</p>
+          <h3 data-lang="pt" class="visible">Importar SVG</h3>
+          <h3 data-lang="en">Import SVG</h3>
+          <p data-lang="pt" class="visible">Exporta o teu desenho do Tinkercad, Inkscape ou Illustrator como SVG com paths fechados. O gerador faz o resto.</p>
+          <p data-lang="en">Export your drawing from Tinkercad, Inkscape or Illustrator as an SVG with closed paths. The generator does the rest.</p>
         </div>
       </div>
       <div class="explain-item">
         <span class="explain-icon">📦</span>
         <div>
-          <h3>STL direto para slicer</h3>
-          <p>O ficheiro gerado é watertight e importável directamente no Tinkercad, PrusaSlicer, Cura ou qualquer slicer.</p>
+          <h3 data-lang="pt" class="visible">STL direto para slicer</h3>
+          <h3 data-lang="en">STL ready for slicer</h3>
+          <p data-lang="pt" class="visible">O ficheiro gerado é watertight e importável directamente no Tinkercad, PrusaSlicer, Cura ou qualquer slicer.</p>
+          <p data-lang="en">The generated file is watertight and can be imported directly into Tinkercad, PrusaSlicer, Cura or any slicer.</p>
         </div>
       </div>
     </div>
-
-    <details>
-      <summary>🇬🇧 English</summary>
-      <p>This tool converts SVG outlines into extruded 3D walls with a rounded fillet on the top edge. Useful for tactile models for visually impaired students (sharp edges hurt fingers) and for vacuum forming matrices (sharp corners tear plastic). Upload an SVG with closed paths, set wall height and fillet radius, and download a watertight STL.</p>
-    </details>
   </div>
 
   <!-- Upload -->
   <div class="card">
-    <h2>1 · Ficheiro SVG</h2>
+    <h2 data-lang="pt" class="visible">1 · Ficheiro SVG</h2>
+    <h2 data-lang="en">1 · SVG File</h2>
     <div class="drop-zone" id="dropZone">
       <input type="file" id="svgFile" accept=".svg,image/svg+xml">
       <span class="drop-icon">📂</span>
-      <div class="drop-text"><strong>Clica</strong> ou arrasta um ficheiro SVG para aqui</div>
+      <div class="drop-text">
+        <span data-lang="pt" class="visible"><strong>Clica</strong> ou arrasta um ficheiro SVG para aqui</span>
+        <span data-lang="en"><strong>Click</strong> or drag an SVG file here</span>
+      </div>
       <div class="file-name" id="fileName"></div>
     </div>
   </div>
 
   <!-- Parameters -->
   <div class="card">
-    <h2>2 · Parâmetros</h2>
+    <h2 data-lang="pt" class="visible">2 · Parâmetros</h2>
+    <h2 data-lang="en">2 · Parameters</h2>
     <div class="params">
       <div class="param-group">
         <label>
-          Altura da parede
+          <span data-lang="pt" class="visible">Altura da parede</span>
+          <span data-lang="en">Wall height</span>
           <span class="val" id="heightVal">5.0 mm</span>
         </label>
         <input type="range" id="wallHeight" min="1" max="30" step="0.5" value="5">
-        <div class="param-hint">Altura total da parede extrudida</div>
+        <div class="param-hint">
+          <span data-lang="pt" class="visible">Altura total da parede extrudida</span>
+          <span data-lang="en">Total extruded wall height</span>
+        </div>
       </div>
       <div class="param-group">
         <label>
-          Raio do fillet
+          <span data-lang="pt" class="visible">Raio do fillet</span>
+          <span data-lang="en">Fillet radius</span>
           <span class="val" id="filletVal">1.0 mm</span>
         </label>
         <input type="range" id="filletRadius" min="0.2" max="8" step="0.1" value="1">
-        <div class="param-hint">Raio do arredondamento superior (≤ metade da altura)</div>
+        <div class="param-hint">
+          <span data-lang="pt" class="visible">Raio do arredondamento superior (≤ metade da altura)</span>
+          <span data-lang="en">Top rounding radius (≤ half the wall height)</span>
+        </div>
       </div>
     </div>
 
@@ -403,17 +443,20 @@ HTML = r"""<!DOCTYPE html>
 
   <!-- Generate -->
   <div class="card">
-    <h2>3 · Gerar STL</h2>
+    <h2 data-lang="pt" class="visible">3 · Gerar STL</h2>
+    <h2 data-lang="en">3 · Generate STL</h2>
     <button class="btn-generate" id="btnGenerate" disabled>
-      Gerar STL com Arestas Arredondadas
+      <span data-lang="pt" class="visible">Gerar STL com Arestas Arredondadas</span>
+      <span data-lang="en">Generate STL with Rounded Edges</span>
     </button>
     <div class="status loading" id="statusLoading">
       <div class="spinner"></div>
-      <span>A processar o SVG e a gerar geometria 3D… pode demorar alguns segundos.</span>
+      <span data-lang="pt" class="visible">A processar o SVG e a gerar geometria 3D… pode demorar alguns segundos.</span>
+      <span data-lang="en">Processing SVG and generating 3D geometry… this may take a few seconds.</span>
     </div>
     <div class="status success" id="statusSuccess">
       <span>✅</span>
-      <span id="successMsg">STL gerado com sucesso! O download iniciou automaticamente.</span>
+      <span id="successMsg"></span>
     </div>
     <div class="status error" id="statusError"></div>
   </div>
@@ -422,11 +465,30 @@ HTML = r"""<!DOCTYPE html>
 
 <footer>
   Buinho FabLab · Messejana, Alentejo, Portugal · <a href="https://buinho.pt" target="_blank">buinho.pt</a><br>
-  Licença <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">CC-BY-SA 4.0</a>
-  · Ferramenta open-source para educação maker e acessibilidade
+  <span data-lang="pt" class="visible">Licença</span><span data-lang="en">Licence</span>
+  <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">CC-BY-SA 4.0</a>
+  · <span data-lang="pt" class="visible">Ferramenta open-source para educação maker e acessibilidade</span><span data-lang="en">Open-source tool for maker education and accessibility</span>
 </footer>
 
 <script>
+// ── Language switcher ─────────────────────────────────────────────
+function setLang(lang) {
+  document.querySelectorAll('[data-lang]').forEach(el => {
+    el.classList.toggle('visible', el.dataset.lang === lang);
+  });
+  document.getElementById('btnPT').classList.toggle('active', lang === 'pt');
+  document.getElementById('btnEN').classList.toggle('active', lang === 'en');
+  document.documentElement.lang = lang;
+  localStorage.setItem('svg_stl_lang', lang);
+  window._lang = lang;
+}
+// Restore saved language on load
+(function() {
+  const saved = localStorage.getItem('svg_stl_lang') ||
+    (navigator.language.startsWith('pt') ? 'pt' : 'en');
+  setLang(saved);
+})();
+
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('svgFile');
 const fileName  = document.getElementById('fileName');
@@ -646,11 +708,21 @@ btnGen.addEventListener('click', async () => {
     const effR2 = resp.headers.get('X-Fillet-Effective');
     const reqR2 = resp.headers.get('X-Fillet-Requested');
     const wasCapped = resp.headers.get('X-Fillet-Capped') === 'true';
-    let msg = `✅ STL gerado! (parede ${wallSlider.value}mm · fillet ${filletSlider.value}mm)`;
-    if (wasCapped && effR2) {
-      msg += ` — ⚠️ fillet reduzido para ${parseFloat(effR2).toFixed(2)}mm (forma complexa)`;
+    const lang = window._lang || 'pt';
+    let msg;
+    if (lang === 'en') {
+      msg = `✅ STL generated! (wall ${wallSlider.value}mm · fillet ${filletSlider.value}mm)`;
+      if (wasCapped && effR2) {
+        msg += ` — ⚠️ fillet reduced to ${parseFloat(effR2).toFixed(2)}mm (complex shape)`;
+      }
+      msg += ' · If importing into Tinkercad, select all and group (Ctrl+G).';
+    } else {
+      msg = `✅ STL gerado! (parede ${wallSlider.value}mm · fillet ${filletSlider.value}mm)`;
+      if (wasCapped && effR2) {
+        msg += ` — ⚠️ fillet reduzido para ${parseFloat(effR2).toFixed(2)}mm (forma complexa)`;
+      }
+      msg += ' · Se importares no Tinkercad, selecciona tudo e agrupa (Ctrl+G).';
     }
-    msg += ' · Se importares no Tinkercad, selecciona tudo e agrupa (Ctrl+G).';
     document.getElementById('successMsg').textContent = msg;
   } catch (e) {
     showError(e.message);
