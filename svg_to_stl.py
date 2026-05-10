@@ -310,7 +310,7 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=16):
     return mesh
 
 
-def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=16):
+def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=8):
     polygons = svg_to_polygons(svg_bytes)
     if not polygons:
         raise ValueError(
@@ -318,15 +318,28 @@ def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=
             "Certifica-te de que o SVG tem paths fechados ou strokes visíveis."
         )
 
-    meshes = []
+    # Simplify polygons to reduce vertex count before meshing.
+    # 0.2mm tolerance is below 3D printer resolution — visually lossless.
+    SIMPLIFY_TOL = 0.2
+    simplified = []
     for poly in polygons:
         if isinstance(poly, MultiPolygon):
             for sub in poly.geoms:
-                m = polygon_to_mesh(sub, wall_height_mm, fillet_radius_mm, n_arc)
-                if m: meshes.append(m)
+                s = sub.simplify(SIMPLIFY_TOL)
+                if s.is_valid and s.area > 0.1:
+                    simplified.append(s)
         else:
-            m = polygon_to_mesh(poly, wall_height_mm, fillet_radius_mm, n_arc)
-            if m: meshes.append(m)
+            s = poly.simplify(SIMPLIFY_TOL)
+            if s.is_valid and s.area > 0.1:
+                simplified.append(s)
+
+    if not simplified:
+        raise ValueError("Nenhum contorno gerou geometria válida após simplificação.")
+
+    meshes = []
+    for poly in simplified:
+        m = polygon_to_mesh(poly, wall_height_mm, fillet_radius_mm, n_arc)
+        if m: meshes.append(m)
 
     if not meshes:
         raise ValueError("Nenhum contorno gerou geometria válida.")
