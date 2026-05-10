@@ -7,7 +7,7 @@ import os
 import io
 import traceback
 from flask import Flask, request, send_file, jsonify, render_template_string
-from svg_to_stl import svg_bytes_to_stl
+from svg_to_stl import svg_bytes_to_stl, svg_bytes_to_stl_with_info
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max
@@ -643,8 +643,15 @@ btnGen.addEventListener('click', async () => {
     URL.revokeObjectURL(url);
     document.getElementById('statusLoading').style.display = 'none';
     document.getElementById('statusSuccess').style.display = 'flex';
-    document.getElementById('successMsg').textContent =
-      `✅ STL gerado! (parede ${wallSlider.value}mm · fillet ${filletSlider.value}mm) · Se importares no Tinkercad, selecciona tudo e agrupa (Ctrl+G).`;
+    const effR2 = resp.headers.get('X-Fillet-Effective');
+    const reqR2 = resp.headers.get('X-Fillet-Requested');
+    const wasCapped = resp.headers.get('X-Fillet-Capped') === 'true';
+    let msg = `✅ STL gerado! (parede ${wallSlider.value}mm · fillet ${filletSlider.value}mm)`;
+    if (wasCapped && effR2) {
+      msg += ` — ⚠️ fillet reduzido para ${parseFloat(effR2).toFixed(2)}mm (forma complexa)`;
+    }
+    msg += ' · Se importares no Tinkercad, selecciona tudo e agrupa (Ctrl+G).';
+    document.getElementById('successMsg').textContent = msg;
   } catch (e) {
     showError(e.message);
   } finally {
@@ -694,15 +701,16 @@ def generate():
 
     svg_bytes = svg_file.read()
     try:
-        stl_bytes = svg_bytes_to_stl(svg_bytes, wall_height, fillet_radius)
+        stl_bytes, info = svg_bytes_to_stl_with_info(svg_bytes, wall_height, fillet_radius)
     except ValueError as e:
         return jsonify({'error': str(e)}), 422
     except Exception as e:
         traceback.print_exc()
         return jsonify({'error': f'Erro interno ao processar o SVG: {str(e)}'}), 500
 
+    eff_r = info.get('fillet_effective_mm', fillet_radius)
     stem = os.path.splitext(svg_file.filename)[0]
-    out_name = f"{stem}_fillet_{fillet_radius:.1f}mm.stl"
+    out_name = f"{stem}_fillet_{eff_r:.2f}mm.stl"
 
     return send_file(
         io.BytesIO(stl_bytes),
