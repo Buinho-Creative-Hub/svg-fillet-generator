@@ -482,63 +482,131 @@ filletSlider.addEventListener('input', () => {
 });
 
 // ── Cross-section preview ─────────────────────────────────────────
+// Shows the wall profile: flat bottom, vertical sides, rounded top edges.
+// SVG coordinate system: Y increases downward.
+// Wall sits with base at bottom, rounded cap at top.
 function drawSection() {
   const H = parseFloat(wallSlider.value);
   const R = parseFloat(filletSlider.value);
-  const W = 40;   // wall thickness for display
-  const scale = 80 / Math.max(H, 10); // px per mm
+
+  // Fixed display dimensions (mm → px mapping fits inside 200×140 viewBox)
+  const VW = 200, VH = 140;
+  const margin = { left: 38, right: 18, top: 18, bottom: 22 };
+  const availH = VH - margin.top - margin.bottom;  // 100px
+  const availW = VW - margin.left - margin.right;   // 144px
+
+  const scale = availH / Math.max(H, 8);  // px per mm, capped so tall walls fit
   const Hpx = H * scale;
-  const Rpx = R * scale;
-  const Wpx = W * scale;
+  const Rpx = Math.min(R * scale, Hpx * 0.48);
+  const Wpx = Math.min(availW * 0.55, Hpx * 1.4); // wall width proportional but bounded
 
-  const cx = 100, cy = 120; // bottom-left corner of wall in SVG coords
-  const top = cy - Hpx;
-  const straight = cy - Hpx + Rpx;
+  // Anchor: bottom-left of wall
+  const bx = margin.left + (availW - Wpx) / 2;  // horizontally centred
+  const by = margin.top + availH;                 // bottom of wall
 
-  // Path: outer wall edge going up with fillet on top
-  // Left vertical edge → fillet arc → horizontal top → right vertical → bottom
-  const arcN = 24;
+  const topY    = by - Hpx;          // top surface Y
+  const arcBaseY = topY + Rpx;       // where straight section ends, arc begins
+
+  // Build the cross-section profile path (one half-slice showing left wall + top)
+  // Points go: bottom-left → up straight section → quarter-arc outward-left →
+  //            across top → quarter-arc outward-right → down → bottom-right → close
+  const arcN = 20;
   let pts = [];
+
   // bottom-left
-  pts.push([cx, cy]);
-  // top-left (start of arc)
-  pts.push([cx, straight]);
-  // quarter-circle fillet (convex outward — going from top-left corner around)
+  pts.push([bx, by]);
+  // straight left wall up to arc start
+  pts.push([bx, arcBaseY]);
+  // LEFT top arc: centre at (bx, topY), arc goes from 180° → 270° (outward = left = -x)
   for (let i = 0; i <= arcN; i++) {
-    const a = Math.PI / 2 * (1 - i / arcN); // π/2 → 0
-    const u = Rpx * (1 - Math.cos(a));  // 0 → Rpx outward (left = negative x in SVG)
-    const v = Rpx * Math.sin(a);         // Rpx → 0 upward
-    pts.push([cx - u, straight - v]);
+    const a = Math.PI + (Math.PI / 2) * (i / arcN); // 180° → 270°
+    const x = bx + Rpx * Math.cos(a);   // bx - Rpx*cos → bx
+    const y = topY + Rpx * Math.sin(a); // topY → topY + Rpx = arcBaseY
+    // Remap: at i=0 (180°): x=bx-Rpx, y=topY  → outside-left, top
+    //        at i=arcN(270°): x=bx, y=topY+Rpx  → wall face, arc-base ✓
+    // Actually we want: start at (bx, arcBaseY) going UP and curving inward to (bx+Rpx, topY)
+    // Use: angle 270°→360°, centre at (bx+Rpx, arcBaseY)
+    pts.pop(); // remove last, rebuild below
+    break;
   }
-  // top surface (inset by fillet)
-  pts.push([cx + Wpx, top]);
-  // right arc (mirror)
-  for (let i = arcN; i >= 0; i--) {
-    const a = Math.PI / 2 * (1 - i / arcN);
-    const u = Rpx * (1 - Math.cos(a));
-    const v = Rpx * Math.sin(a);
-    pts.push([cx + Wpx + u, straight - v]);
+  // Redo left arc: centre at (bx + Rpx, arcBaseY), quarter from 180° to 90° (going up-left)
+  pts.push([bx, arcBaseY]); // start of arc on left face
+  for (let i = 1; i <= arcN; i++) {
+    const a = Math.PI - (Math.PI / 2) * (i / arcN); // 180° → 90°
+    const x = (bx + Rpx) + Rpx * Math.cos(a); // bx+Rpx - Rpx → bx+Rpx+0 ... wait
+    // Centre = (bx + Rpx, arcBaseY); radius = Rpx
+    // At a=180°: x=bx+Rpx-Rpx=bx, y=arcBaseY ✓ (on left wall face)
+    // At a=90°:  x=bx+Rpx, y=arcBaseY-Rpx=topY ✓ (on top surface)
+    const px = (bx + Rpx) + Rpx * Math.cos(a);
+    const py = arcBaseY   + Rpx * Math.sin(a);  // sin(180°)=0, sin(90°)=1 → goes UP (lower y)
+    // sin(180°→90°): 0 → 1, so py goes from arcBaseY → arcBaseY+Rpx  — that's DOWN, not up
+    // Fix: negate sin
+    const px2 = (bx + Rpx) + Rpx * Math.cos(a);
+    const py2 = arcBaseY   - Rpx * Math.sin(a); // arcBaseY → arcBaseY-Rpx = topY ✓
+    pts.push([px2, py2]);
   }
-  // bottom-right
-  pts.push([cx + Wpx, cy]);
+  // top surface: from (bx+Rpx, topY) to (bx+Wpx-Rpx, topY)
+  pts.push([bx + Wpx - Rpx, topY]);
+  // RIGHT top arc: centre at (bx+Wpx-Rpx, arcBaseY), quarter from 90°→0°
+  for (let i = 1; i <= arcN; i++) {
+    const a = (Math.PI / 2) * (1 - i / arcN); // 90° → 0°
+    const px = (bx + Wpx - Rpx) + Rpx * Math.cos(a);
+    const py = arcBaseY          - Rpx * Math.sin(a);
+    pts.push([px, py]);
+  }
+  // straight right wall down
+  pts.push([bx + Wpx, by]);
 
   const d = 'M' + pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' L') + ' Z';
 
-  // Labels
+  // Dimension annotations
+  const dimX = bx - 6;           // left of wall
+  const hLabelY = (by + topY) / 2 + 4;
+  const rLabelY = (arcBaseY + topY) / 2 + 3;
+  const baseY = by + 10;
+
   sectionSvg.innerHTML = `
-    <rect width="200" height="140" fill="#f9f6f1" rx="8"/>
-    <!-- wall fill -->
-    <path d="${d}" fill="#2038A6" opacity="0.18" stroke="#2038A6" stroke-width="2" stroke-linejoin="round"/>
-    <!-- fillet arc highlight -->
-    <!-- dimension lines -->
-    <line x1="${cx - 18}" y1="${cy}" x2="${cx - 18}" y2="${top}" stroke="#FA6415" stroke-width="1.5" stroke-dasharray="3,2"/>
-    <text x="${cx - 22}" y="${(cy + top) / 2 + 4}" text-anchor="end" font-family="ASAP,sans-serif" font-size="10" fill="#FA6415">${H.toFixed(1)}mm</text>
-    <!-- fillet dimension -->
-    <line x1="${cx - 8}" y1="${straight}" x2="${cx - 8}" y2="${top}" stroke="#1a6b1a" stroke-width="1.5" stroke-dasharray="2,2"/>
-    <text x="${cx - 10}" y="${(straight + top) / 2 + 4}" text-anchor="end" font-family="ASAP,sans-serif" font-size="9" fill="#1a6b1a">r=${R.toFixed(1)}</text>
-    <!-- baseline -->
-    <line x1="${cx - 5}" y1="${cy}" x2="${cx + Wpx + 5}" y2="${cy}" stroke="#888" stroke-width="1"/>
-    <text x="${cx + Wpx / 2}" y="${cy + 14}" text-anchor="middle" font-family="ASAP,sans-serif" font-size="9" fill="#888">secção transversal</text>
+    <rect width="${VW}" height="${VH}" fill="#f9f6f1" rx="8"/>
+
+    <!-- Ground line -->
+    <line x1="${bx - 4}" y1="${by}" x2="${bx + Wpx + 4}" y2="${by}"
+          stroke="#bbb" stroke-width="1"/>
+
+    <!-- Wall shape -->
+    <path d="${d}" fill="#2038A6" fill-opacity="0.15"
+          stroke="#2038A6" stroke-width="1.8" stroke-linejoin="round"/>
+
+    <!-- Fillet arc highlight in orange -->
+    <path d="M${bx.toFixed(1)},${arcBaseY.toFixed(1)}
+             ${pts.slice(1, arcN+2).map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}"
+          fill="none" stroke="#FA6415" stroke-width="2" stroke-linecap="round"/>
+    <path d="M${(bx+Wpx-Rpx).toFixed(1)},${topY.toFixed(1)}
+             ${pts.slice(arcN+3, arcN*2+4).map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}"
+          fill="none" stroke="#FA6415" stroke-width="2" stroke-linecap="round"/>
+
+    <!-- Height dimension line -->
+    <line x1="${dimX}" y1="${by}" x2="${dimX}" y2="${topY}"
+          stroke="#FA6415" stroke-width="1.2" stroke-dasharray="3,2"/>
+    <line x1="${dimX-3}" y1="${by}" x2="${dimX+3}" y2="${by}" stroke="#FA6415" stroke-width="1.5"/>
+    <line x1="${dimX-3}" y1="${topY}" x2="${dimX+3}" y2="${topY}" stroke="#FA6415" stroke-width="1.5"/>
+    <text x="${dimX - 4}" y="${hLabelY}" text-anchor="end"
+          font-family="ASAP,sans-serif" font-size="10" font-weight="700" fill="#FA6415">${H.toFixed(1)}mm</text>
+
+    <!-- Fillet radius dimension -->
+    ${Rpx > 6 ? `
+    <line x1="${(bx+Wpx+6).toFixed(1)}" y1="${arcBaseY.toFixed(1)}"
+          x2="${(bx+Wpx+6).toFixed(1)}" y2="${topY.toFixed(1)}"
+          stroke="#2038A6" stroke-width="1" stroke-dasharray="2,2"/>
+    <text x="${(bx+Wpx+10).toFixed(1)}" y="${rLabelY.toFixed(1)}"
+          font-family="ASAP,sans-serif" font-size="9" font-weight="700" fill="#2038A6">r=${R.toFixed(1)}</text>
+    ` : `
+    <text x="${(bx+Wpx/2).toFixed(1)}" y="${(topY-5).toFixed(1)}"
+          text-anchor="middle" font-family="ASAP,sans-serif" font-size="8" fill="#2038A6">r=${R.toFixed(1)}mm</text>
+    `}
+
+    <!-- Label -->
+    <text x="${(bx+Wpx/2).toFixed(1)}" y="${(by+16).toFixed(1)}"
+          text-anchor="middle" font-family="ASAP,sans-serif" font-size="8" fill="#999">secção transversal</text>
   `;
 }
 drawSection();
