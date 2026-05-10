@@ -173,6 +173,40 @@ def _max_valid_inset(pts, r_target, tol=0.05):
     return lo * 0.9
 
 
+def _max_safe_interring_inset(polygon, r_target, min_cap_gap=0.5):
+    """
+    Compute the maximum safe inset radius for a polygon's cap triangulation.
+
+    When the exterior ring and hole rings are each inset by r, their mutual
+    distance decreases by ~2r (they move toward each other). If two rings
+    come closer than min_cap_gap, the cap triangulation becomes degenerate
+    (earcut bridge artefacts, slivers, wrong-winding faces).
+
+    Returns the largest r ≤ r_target such that all inter-ring gaps after
+    inset remain ≥ min_cap_gap.
+    """
+    all_rings = (
+        [np.array(list(polygon.exterior.coords)[:-1])] +
+        [np.array(list(h.coords)[:-1]) for h in polygon.interiors]
+    )
+    if len(all_rings) <= 1:
+        return r_target  # single ring: no inter-ring constraint
+
+    r_safe = r_target
+    for i in range(len(all_rings)):
+        for j in range(i + 1, len(all_rings)):
+            tree = cKDTree(all_rings[i])
+            dists, _ = tree.query(all_rings[j])
+            min_d = dists.min()
+            # After inset by r: gap ≈ min_d - 2r ≥ min_cap_gap
+            # → r ≤ (min_d - min_cap_gap) / 2
+            r_pair = (min_d - min_cap_gap) / 2.0
+            if r_pair < r_safe:
+                r_safe = r_pair
+
+    return max(r_safe, 0.05)  # never go below 0.05mm
+
+
 def _triangulate_cap(ring_xys_list, shapely_poly, z_level):
     """
     Earcut cap triangulation with snap-to-ring.
@@ -219,7 +253,11 @@ def _triangulate_cap(ring_xys_list, shapely_poly, z_level):
 
 def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=24):
     """Single watertight mesh for a shapely Polygon (may have holes)."""
+    # Cap 1: wall height constraint
     r_global = min(fillet_radius, wall_height * 0.48)
+    # Cap 2: inter-ring proximity (prevents degenerate cap triangulation)
+    if len(list(polygon.interiors)) > 0:
+        r_global = _max_safe_interring_inset(polygon, r_global)
     all_verts, all_faces, global_offset, cap_data = [], [], 0, []
 
     rings = [(polygon.exterior.coords, False)] + [
@@ -341,3 +379,53 @@ def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=
 
     final = trimesh.util.concatenate(meshes) if len(meshes) > 1 else meshes[0]
     return final.export(file_type='stl')
+
+
+def svg_bytes_to_stl_with_info(svg_bytes, wall_height_mm=5.0,
+                                fillet_radius_mm=1.0, n_arc=16):
+    """Like svg_bytes_to_stl but also returns a dict with effective parameters."""
+    polygons = svg_to_polygons(svg_bytes)
+    if not polygons:
+        raise ValueError(
+            "Não foi possível extrair contornos fechados do SVG. "
+            "Certifica-te de que o SVG tem paths fechados ou strokes visíveis."
+        )
+
+    simplified = []
+    for poly in polygons:
+        if isinstance(poly, MultiPolygon):
+            for sub in poly.geoms:
+                s = orient(sub.simplify(0.2), sign=1.0)
+                if s.is_valid and s.area > 0.1: simplified.append(s)
+        else:
+            s = orient(poly.simplify(0.2), sign=1.0)
+            if s.is_valid and s.area > 0.1: simplified.append(s)
+
+    if not simplified:
+        raise ValueError("Nenhum contorno gerou geometria válida.")
+
+    r_base = min(fillet_radius_mm, wall_height_mm * 0.48)
+    effective_r = r_base
+    for poly in simplified:
+        if len(list(poly.interiors)) > 0:
+            r_poly = _max_safe_interring_inset(poly, r_base)
+            effective_r = min(effective_r, r_poly)
+
+    meshes = []
+    for poly in simplified:
+        m = polygon_to_mesh(poly, wall_height_mm, fillet_radius_mm, n_arc)
+        if m: meshes.append(m)
+
+    if not meshes:
+        raise ValueError("Nenhum contorno gerou geometria válida.")
+
+    final = trimesh.util.concatenate(meshes) if len(meshes) > 1 else meshes[0]
+    stl_bytes = final.export(file_type='stl')
+
+    info = {
+        'fillet_requested_mm': fillet_radius_mm,
+        'fillet_effective_mm': round(effective_r, 2),
+        'fillet_capped': effective_r < fillet_radius_mm * 0.99,
+        'polygons': len(simplified),
+    }
+    return stl_bytes, info
