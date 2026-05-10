@@ -9,7 +9,7 @@ Architecture:
   * Per-vertex normals on the polygon boundary
   * Unified inset formula: pts - u * vertex_normals (works for both CCW and CW rings)
   * Per-ring adaptive fillet: binary-search max r that keeps inset ring non-self-intersecting
-  * Caps: Delaunay on ring coords only + area-ratio containment test (no Steiner points)
+  * Caps: Delaunay + triple filter (covers/area_ratio/edge_cross) for robustness
   * Degenerate face removal after merge_vertices
 """
 
@@ -155,7 +155,7 @@ def _vertex_normals(pts):
     """
     Per-vertex normals for a 2D ring.
     CCW ring → normals outward. CW ring → normals inward (into hole).
-    Used with unified inset formula: ring_xy = pts - u * normals.
+    Unified inset: ring_xy = pts - u * normals works for both.
     """
     n = len(pts)
     def edge_n(p0, p1):
@@ -173,10 +173,8 @@ def _vertex_normals(pts):
 
 def _max_valid_inset(pts, r_target, tol=0.05):
     """
-    Per-ring adaptive fillet: find the maximum inset amount that keeps the
-    inset ring non-self-intersecting (simple).
-    For thin features in complex SVGs (dog legs, thin curves), the target r
-    may cause self-intersection → reduce r until the ring is valid.
+    Per-ring adaptive fillet: binary-search max inset that keeps ring non-self-intersecting.
+    Prevents artefacts on thin features (dog legs, thin curves, tight concavities).
     """
     vn = _vertex_normals(pts)
     def ok(u):
@@ -191,28 +189,57 @@ def _max_valid_inset(pts, r_target, tol=0.05):
         if ok(mid): lo = mid
         else: hi = mid
         if hi - lo < tol: break
-    return lo * 0.9  # small safety margin
+    return lo * 0.9
 
 
-def _triangulate_cap(ring_xys_list, shapely_poly):
+def _triangulate_cap(ring_xys_list, cap_poly):
     """
-    Robust cap triangulation using Delaunay on ring vertices only (no Steiner points).
-    Uses area-ratio intersection test to filter spurious triangles in concave polygons.
+    Robust cap triangulation: Delaunay on ring vertices + triple filter.
+
+    1. covers(centroid): boundary-inclusive version of contains() — avoids
+       false rejections of thin triangles whose centroid lies on the boundary.
+    2. area_ratio > 0.98: rejects spurious triangles that span concavities
+       (their intersection with the polygon is much smaller than the triangle).
+    3. edge.crosses(boundary): definitive rejection of any remaining triangles
+       whose edges cross the polygon boundary.
+
+    cap_poly is built from the inset ring coords (NOT polygon.buffer(-r)),
+    so ring vertices lie ON cap_poly boundary → covers() works correctly.
     """
+    if cap_poly is None or cap_poly.is_empty:
+        return np.empty((0,3), int)
+
     all_pts = np.vstack(ring_xys_list)
-    tri = Delaunay(all_pts)
+    tri_obj = Delaunay(all_pts)
+    boundary = cap_poly.boundary
     valid = []
-    for face in tri.simplices:
+
+    for face in tri_obj.simplices:
         pts = all_pts[face]
-        tri_p = Polygon(pts)
+        c = pts.mean(axis=0)
+
+        # Filter 1: centroid covered by polygon (boundary-inclusive)
+        if not cap_poly.covers(Point(c)):
+            continue
+
+        # Filter 2: area ratio (rejects triangles that span concavities)
         try:
-            inter = shapely_poly.intersection(tri_p)
-            if not inter.is_empty and inter.area / max(tri_p.area, 1e-10) > 0.98:
-                valid.append(face)
+            tri_p = Polygon(pts)
+            inter = cap_poly.intersection(tri_p)
+            if inter.is_empty or inter.area / max(tri_p.area, 1e-10) < 0.98:
+                continue
         except Exception:
-            c = pts.mean(axis=0)
-            if shapely_poly.contains(Point(c)):
-                valid.append(face)
+            pass  # if intersection fails, proceed to edge test
+
+        # Filter 3: no edge crosses the polygon boundary
+        ok = True
+        for i in range(3):
+            if LineString([pts[i], pts[(i+1)%3]]).crosses(boundary):
+                ok = False
+                break
+        if ok:
+            valid.append(face)
+
     return np.array(valid, dtype=np.int64) if valid else np.empty((0,3), int)
 
 
@@ -224,7 +251,7 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=24):
     - Per-ring adaptive fillet radius (binary search for max valid inset).
     - Unified inset: ring_xy = pts - u * vertex_normals (CCW and CW).
     - Wall winding [a,b,c][a,c,d] for both exterior and holes.
-    - Caps via Delaunay + area-ratio containment (no Steiner, no seams).
+    - Caps via Delaunay + triple filter (covers/area_ratio/edge_cross).
     - Degenerate face removal after merge_vertices.
     """
     r_global = min(fillet_radius, wall_height * 0.48)
@@ -244,7 +271,7 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=24):
         if n_ring < 3:
             continue
 
-        # Adaptive fillet: reduce r if this ring is too thin
+        # Per-ring adaptive fillet
         r = _max_valid_inset(pts, r_global)
         sh = wall_height - r
 
@@ -268,8 +295,7 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=24):
 
         all_verts.append(verts)
 
-        # Wall quads: same winding for exterior and holes
-        # (ring direction already encodes correct normal orientation)
+        # Wall quads — same winding for exterior (CCW) and holes (CW)
         faces = []
         for lv in range(n_levels - 1):
             for i in range(n_ring):
@@ -301,7 +327,8 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=24):
     try:
         bex = verts_all[ext_bot, :2]
         bho = [verts_all[hb, :2] for hb in hole_bots]
-        bp  = orient(Polygon(bex.tolist(), [h.tolist() for h in bho]), sign=1.0)
+        # Cap polygon built from bottom ring coords (u=0 → original polygon shape)
+        bp = orient(Polygon(bex.tolist(), [h.tolist() for h in bho]), sign=1.0)
         if not bp.is_valid: bp = bp.buffer(0)
         rxs = [bex] + bho
         loc = np.array(ext_bot + [i for hb in hole_bots for i in hb])
@@ -315,7 +342,8 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=24):
     try:
         tex = verts_all[ext_top, :2]
         tho = [verts_all[ht, :2] for ht in hole_tops]
-        tp  = orient(Polygon(tex.tolist(), [h.tolist() for h in tho]), sign=1.0)
+        # Cap polygon built from inset ring coords (vertices ON boundary → covers() works)
+        tp = orient(Polygon(tex.tolist(), [h.tolist() for h in tho]), sign=1.0)
         if not tp.is_valid: tp = tp.buffer(0)
         rxs = [tex] + tho
         loc = np.array(ext_top + [i for ht in hole_tops for i in ht])
@@ -327,11 +355,7 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=24):
 
     mesh = trimesh.Trimesh(vertices=verts_all, faces=faces_all, process=False)
     mesh.merge_vertices(merge_tex=False, merge_norm=False)
-
-    # Remove degenerate faces (near-zero area → cause black rendering artefacts)
-    areas = mesh.area_faces
-    mesh.update_faces(areas > 1e-6)
-
+    mesh.update_faces(mesh.area_faces > 1e-6)
     return mesh
 
 
