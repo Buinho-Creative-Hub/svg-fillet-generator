@@ -224,8 +224,8 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=24):
                 d = vidx + (lv+1)*n + i
                 if is_ccw:  # exterior: standard CCW winding
                     all_faces.extend([[a,b,c],[a,c,d]])
-                else:        # hole: flip winding
-                    all_faces.extend([[a,c,b],[a,d,c]])
+                else:        # hole: SAME winding — normal direction already encoded in vnormals
+                    all_faces.extend([[a,b,c],[a,c,d]])
 
         # Extract bottom ring (lv=0) and top ring (lv=n_levels-1) as 2D points
         bot_ring = [(verts_grid[i][0], verts_grid[i][1]) for i in range(n)]
@@ -269,12 +269,14 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=24):
 
     verts = np.vstack(all_verts)
     faces = np.array(all_faces)
-    mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=True)
-    mesh.fix_normals()
+    # process=False: skip expensive BFS winding check — our winding is correct by construction
+    mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+    # merge_vertices closes seams between walls and caps (fast: ~0.004s)
+    mesh.merge_vertices(merge_tex=False, merge_norm=False)
     return mesh
 
 
-def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=24):
+def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=16):
     polygons = svg_to_polygons(svg_bytes)
     if not polygons:
         raise ValueError(
@@ -305,5 +307,4 @@ def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=
         raise ValueError("Nenhum contorno gerou geometria válida.")
 
     final = trimesh.util.concatenate(meshes) if len(meshes) > 1 else meshes[0]
-    final.fix_normals()
     return final.export(file_type='stl')
