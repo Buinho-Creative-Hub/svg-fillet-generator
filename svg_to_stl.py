@@ -175,18 +175,17 @@ def _max_valid_inset(pts, r_target, tol=0.05):
 
 def _triangulate_cap(ring_xys_list, shapely_poly, z_level):
     """
-    Earcut cap triangulation with complete bridge-edge closure.
+    Earcut cap triangulation with snap-to-ring.
 
-    earcut handles polygon holes natively — no spurious cross-concavity triangles.
+    earcut (via trimesh) handles polygon holes natively — no spurious triangles
+    crossing concavities.
 
-    Strategy:
-    1. Run earcut via trimesh; snap all generated verts to nearest ring vert
-       (earcut emits duplicate bridge verts at dist≈0 that snap cleanly).
-    2. Detect non-ring open edges in the cap-only mesh (earcut artifacts
-       when duplicate bridge verts collapse some faces).
-    3. Close each non-ring open edge with the geometrically correct triangle:
-       - Two open edges sharing a vertex → one triangle (three-way junction).
-       - Single open edge → find best-fit third vertex (area+inside test).
+    All earcut vertices are snapped to the nearest ring vertex. Earcut sometimes
+    emits duplicate bridge vertices at dist=0 from ring verts; snapping collapses
+    those to the ring, occasionally leaving one or two non-ring open edges in the
+    cap. These are handled by trimesh.repair.fill_holes() in polygon_to_mesh,
+    which closes them correctly with consistent winding (adding them here
+    manually would interfere with fill_holes).
 
     Returns: (faces_local, empty_array)
       faces_local — indices into np.vstack(ring_xys_list)
@@ -214,84 +213,6 @@ def _triangulate_cap(ring_xys_list, shapely_poly, z_level):
             (faces[:,1] != faces[:,2]) &
             (faces[:,0] != faces[:,2]))
     faces = faces[mask]
-
-    # Build ring boundary edge set (closed loops within each ring)
-    ring_edges = set()
-    offset = 0
-    for ring_xy in ring_xys_list:
-        n = len(ring_xy)
-        for i in range(n):
-            u = offset + i; v = offset + (i+1) % n
-            ring_edges.add((min(u,v), max(u,v)))
-        offset += n
-
-    # Identify non-ring open edges in cap-only mesh
-    verts_2d = np.column_stack([all_ring, np.zeros(n_ring)])
-    tmp = trimesh.Trimesh(vertices=verts_2d, faces=faces, process=False)
-    be  = trimesh.grouping.group_rows(tmp.edges_sorted, require_count=1)
-    open_edges = tmp.edges[be]
-    non_ring_open = [(min(int(e[0]),int(e[1])), max(int(e[0]),int(e[1])))
-                     for e in open_edges
-                     if (min(int(e[0]),int(e[1])), max(int(e[0]),int(e[1]))) not in ring_edges]
-
-    if non_ring_open:
-        extra = []
-        # Case: two open edges sharing a vertex → one closing triangle
-        if len(non_ring_open) == 2:
-            e1, e2 = non_ring_open
-            shared = set(e1) & set(e2)
-            if shared:
-                sv     = shared.pop()
-                other1 = (set(e1) - {sv}).pop()
-                other2 = (set(e2) - {sv}).pop()
-                u, v, w = other1, sv, other2
-                pu, pv, pw = all_ring[u], all_ring[v], all_ring[w]
-                area  = 0.5 * abs(float(np.cross(pv - pu, pw - pu)))
-                cross =        float(np.cross(pv - pu, pw - pu))
-                if area > 1e-6:
-                    # Ensure CCW winding (normal up) for top cap
-                    if cross > 0:
-                        extra.append([u, v, w])
-                    else:
-                        extra.append([u, w, v])
-
-        # Case: one or more remaining uncovered edges → area+intersection test
-        covered_after = set(ring_edges)
-        for f in faces:
-            for i in range(3):
-                e = (min(f[i],f[(i+1)%3]), max(f[i],f[(i+1)%3]))
-                covered_after.add(e)
-        for ef in extra:
-            for i in range(3):
-                e = (min(ef[i],ef[(i+1)%3]), max(ef[i],ef[(i+1)%3]))
-                covered_after.add(e)
-
-        remaining = [e for e in non_ring_open if e not in covered_after]
-        for (u, v) in remaining:
-            pu, pv = all_ring[u], all_ring[v]
-            best_w, best_ratio = None, 0.0
-            for w in range(n_ring):
-                if w == u or w == v: continue
-                pw   = all_ring[w]
-                area = 0.5 * abs(float(np.cross(pv - pu, pw - pu)))
-                if area < 1e-6: continue
-                try:
-                    tri   = Polygon([pu, pv, pw])
-                    ratio = shapely_poly.intersection(tri).area / tri.area
-                    if ratio > 0.4 and ratio > best_ratio:
-                        best_w, best_ratio = w, ratio
-                except Exception:
-                    pass
-            if best_w is not None:
-                pu2, pv2, pw2 = all_ring[u], all_ring[v], all_ring[best_w]
-                cross = float(np.cross(pv2 - pu2, pw2 - pu2))
-                if cross > 0:
-                    extra.append([u, v, best_w])
-                else:
-                    extra.append([u, best_w, v])
-
-        if extra:
-            faces = np.vstack([faces, np.array(extra, dtype=np.int64)])
 
     return faces, np.empty((0, 3))
 
