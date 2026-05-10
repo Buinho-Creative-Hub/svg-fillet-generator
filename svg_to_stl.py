@@ -1,130 +1,153 @@
 """
-svg_to_stl.py — Core STL generation from SVG paths with rounded top edges.
+svg_to_stl.py — SVG → STL with rounded top edges (fillet)
 Buinho FabLab · CC-BY-SA 4.0
+
+Key design decisions:
+- Even-odd fill rule: inner paths become holes (difference), outer = union
+- Each edge of the polygon gets a quarter-circle fillet sweep at the top
+- Output: watertight binary STL
 """
 
 import numpy as np
 import trimesh
 from shapely.geometry import Polygon, MultiPolygon
+from shapely.ops import unary_union
 import svgpathtools
 from lxml import etree
-import re
-import io
+import re, io
 
 
-# ─── SVG parsing ─────────────────────────────────────────────────────────────
+# ─── SVG → Shapely polygons ──────────────────────────────────────────────────
+
+def _split_subpaths(path):
+    """Split a svgpathtools Path into contiguous sub-paths at gaps."""
+    subpaths, current = [], []
+    for seg in path:
+        if current and abs(current[-1].end - seg.start) > 1e-6:
+            subpaths.append(svgpathtools.Path(*current))
+            current = []
+        current.append(seg)
+    if current:
+        subpaths.append(svgpathtools.Path(*current))
+    return subpaths
+
+
+def _path_to_poly(path, scale, samples=20):
+    pts = []
+    n = len(path)
+    if n == 0:
+        return None
+    for seg in path:
+        for i in range(samples):
+            p = seg.point(i / samples)
+            pts.append((p.real * scale, -p.imag * scale))  # flip Y
+    if len(pts) < 3:
+        return None
+    poly = Polygon(pts)
+    if not poly.is_valid:
+        poly = poly.buffer(0)
+    return poly if (poly.is_valid and poly.area > 0.5) else None
+
 
 def svg_to_polygons(svg_bytes):
     """
-    Parse an SVG and return a list of shapely Polygons.
-    Units are converted to mm.
+    Parse SVG → list of shapely Polygons using even-odd fill rule.
+    Inner paths that are fully contained in an outer path become holes.
     """
-    # Parse viewBox / width to derive mm-per-unit scale
     tree = etree.parse(io.BytesIO(svg_bytes))
     root = tree.getroot()
 
+    # Unit scale: SVG user units → mm
     vb = root.get('viewBox', '')
     width_attr = root.get('width', '')
-    height_attr = root.get('height', '')
-
-    scale = 1.0  # default: 1 SVG unit = 1 mm
+    scale = 1.0
     if vb and width_attr:
         parts = vb.split()
         if len(parts) == 4:
             vb_w = float(parts[2])
             w_num = re.sub(r'[^0-9.]', '', width_attr)
             if w_num and float(w_num) > 0:
-                svg_display_w = float(w_num)
-                raw_scale = svg_display_w / vb_w
-                # If width is in px (no "mm"), convert px → mm
+                s = float(w_num) / vb_w
                 if 'mm' not in width_attr:
-                    raw_scale *= 25.4 / 96.0
-                scale = raw_scale
+                    s *= 25.4 / 96.0
+                scale = s
 
-    # Parse paths
-    paths, attribs, _ = svgpathtools.svg2paths2(io.BytesIO(svg_bytes))
+    paths, _, _ = svgpathtools.svg2paths2(io.BytesIO(svg_bytes))
 
-    polygons = []
+    # Collect all sub-polygons from all paths
+    raw = []
     for path in paths:
-        if not path:
-            continue
-        pts = _path_to_points(path)
-        if len(pts) < 3:
-            continue
-        # Apply scale and flip Y (SVG Y-down → CAD Y-up)
-        pts = [(x * scale, -y * scale) for x, y in pts]
-        poly = Polygon(pts)
-        if not poly.is_valid:
-            poly = poly.buffer(0)
-        if poly.is_valid and poly.area > 0.01:
-            polygons.append(poly)
+        for sp in _split_subpaths(path):
+            poly = _path_to_poly(sp, scale)
+            if poly is not None:
+                raw.append(poly)
 
-    return polygons
+    if not raw:
+        return []
+
+    # Sort by area (largest first = outermost)
+    raw.sort(key=lambda p: p.area, reverse=True)
+
+    # Even-odd: build composite shape
+    # Start with the largest polygon, then alternate subtract/add for contained ones
+    result = raw[0]
+    for poly in raw[1:]:
+        try:
+            if result.contains(poly.centroid):
+                result = result.difference(poly)
+            else:
+                result = result.union(poly)
+        except Exception:
+            pass
+
+    if result.is_empty:
+        return []
+    if isinstance(result, MultiPolygon):
+        return [g for g in result.geoms if g.area > 0.5]
+    return [result]
 
 
-def _path_to_points(path, samples_per_segment=16):
-    """Sample a svgpathtools Path into (x, y) floats."""
-    pts = []
-    for seg in path:
-        n = samples_per_segment
-        for i in range(n):
-            t = i / n
-            p = seg.point(t)
-            pts.append((p.real, p.imag))
-    return pts
+# ─── 3-D geometry ─────────────────────────────────────────────────────────────
 
-
-# ─── 3-D geometry ────────────────────────────────────────────────────────────
-
-def _build_wall_with_fillet(polygon, wall_height, fillet_radius, n_arc=16):
+def _ring_to_wall_mesh(coords, wall_height, fillet_r, n_arc=16, outward_sign=1):
     """
-    Build the outer wall geometry with a quarter-circle fillet at the top.
-
-    Returns (vertices, faces) as numpy arrays.
+    Build wall+fillet mesh for one ring of coordinates.
+    outward_sign: +1 for exterior (normal points out), -1 for holes (normal points in).
     """
-    r = min(fillet_radius, wall_height * 0.49)
+    r = fillet_r
     straight_h = wall_height - r
 
-    exterior = list(polygon.exterior.coords)
-    if exterior[0] == exterior[-1]:
-        exterior = exterior[:-1]
-
-    # Arc profile: (u_outward, v_upward) pairs from corner to top
-    arc_pts = []
-    for i in range(n_arc + 1):
-        angle = np.pi / 2 * i / n_arc   # 0 → π/2
-        u = r * (1 - np.cos(angle))     # 0 → r
-        v = r * np.sin(angle)           # 0 → r
-        arc_pts.append((u, v))
-
-    # Height profile: (z, outward_u)
+    # Arc levels: (z, outward_offset)
     levels = [(0.0, 0.0), (straight_h, 0.0)]
-    for (u, v) in arc_pts:
+    for i in range(n_arc + 1):
+        angle = np.pi / 2 * i / n_arc
+        u = r * (1 - np.cos(angle))
+        v = r * np.sin(angle)
         levels.append((straight_h + v, u))
 
     n_levels = len(levels)
-    n = len(exterior)
+    pts = list(coords)
+    if pts[0] == pts[-1]:
+        pts = pts[:-1]
+    n = len(pts)
 
-    all_verts = []
-    all_faces = []
-    vidx = 0
+    all_verts, all_faces, vidx = [], [], 0
 
     for i in range(n):
-        p0 = np.array(exterior[i])
-        p1 = np.array(exterior[(i + 1) % n])
+        p0 = np.array(pts[i])
+        p1 = np.array(pts[(i + 1) % n])
         edge = p1 - p0
-        edge_len = np.linalg.norm(edge)
-        if edge_len < 1e-9:
+        elen = np.linalg.norm(edge)
+        if elen < 1e-9:
             continue
-
-        tangent = edge / edge_len
-        # Outward normal for CCW polygon: rotate tangent 90° CW
-        normal = np.array([tangent[1], -tangent[0]])
+        tang = edge / elen
+        # Outward normal (CCW polygon: rotate CW) scaled by outward_sign
+        norm = np.array([tang[1], -tang[0]]) * outward_sign
 
         verts = []
         for (vz, uout) in levels:
-            for t_frac in [0.0, 1.0]:
-                xy = p0 + t_frac * edge + uout * normal
+            for t in [0.0, 1.0]:
+                xy = p0 + t * edge + uout * norm
                 verts.append([xy[0], xy[1], vz])
 
         verts = np.array(verts)
@@ -132,52 +155,65 @@ def _build_wall_with_fillet(polygon, wall_height, fillet_radius, n_arc=16):
         for row in range(n_levels - 1):
             a = row * 2;     b = row * 2 + 1
             c = (row+1)*2+1; d = (row+1)*2
-            faces.append([a + vidx, c + vidx, b + vidx])
-            faces.append([a + vidx, d + vidx, c + vidx])
+            if outward_sign > 0:
+                faces += [[a+vidx, c+vidx, b+vidx], [a+vidx, d+vidx, c+vidx]]
+            else:
+                faces += [[a+vidx, b+vidx, c+vidx], [a+vidx, c+vidx, d+vidx]]
 
         all_verts.append(verts)
         all_faces.extend(faces)
         vidx += len(verts)
 
     if not all_verts:
-        return None, None
-
+        return None
     return np.vstack(all_verts), np.array(all_faces)
 
 
 def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=16):
     """
-    Build a complete mesh: bottom cap + walls with fillet + top cap.
+    Full mesh for one shapely Polygon (may have holes):
+    bottom cap + walls-with-fillet for exterior + walls for each hole + top cap.
     """
-    r = min(fillet_radius, wall_height * 0.49)
+    r = min(fillet_radius, wall_height * 0.48)
 
     meshes = []
 
     # ── Bottom cap ──
     try:
-        verts2d, faces2d = trimesh.creation.triangulate_polygon(polygon, engine='earcut')
-        bot_v = np.column_stack([verts2d, np.zeros(len(verts2d))])
-        bot_f = faces2d[:, ::-1]  # flip winding → normals face downward
-        meshes.append(trimesh.Trimesh(vertices=bot_v, faces=bot_f, process=False))
+        v2d, f2d = trimesh.creation.triangulate_polygon(polygon, engine='earcut')
+        bot_v = np.column_stack([v2d, np.zeros(len(v2d))])
+        meshes.append(trimesh.Trimesh(vertices=bot_v, faces=f2d[:, ::-1], process=False))
     except Exception:
         pass
 
-    # ── Top cap (inset by fillet radius) ──
-    inset = polygon.buffer(-r)
-    if not inset.is_empty and inset.area > 1e-4:
-        if isinstance(inset, MultiPolygon):
-            inset = max(inset.geoms, key=lambda g: g.area)
-        try:
-            tv, tf = trimesh.creation.triangulate_polygon(inset, engine='earcut')
-            top_v = np.column_stack([tv, np.full(len(tv), wall_height)])
-            meshes.append(trimesh.Trimesh(vertices=top_v, faces=tf, process=False))
-        except Exception:
-            pass
+    # ── Top cap (exterior inset by fillet_r, holes grown by fillet_r) ──
+    try:
+        top_poly = polygon.buffer(-r)   # shrink exterior by fillet
+        if not top_poly.is_empty and top_poly.area > 0.1:
+            if isinstance(top_poly, MultiPolygon):
+                top_poly = max(top_poly.geoms, key=lambda g: g.area)
+            v2d, f2d = trimesh.creation.triangulate_polygon(top_poly, engine='earcut')
+            top_v = np.column_stack([v2d, np.full(len(v2d), wall_height)])
+            meshes.append(trimesh.Trimesh(vertices=top_v, faces=f2d, process=False))
+    except Exception:
+        pass
 
-    # ── Walls with fillet ──
-    wv, wf = _build_wall_with_fillet(polygon, wall_height, r, n_arc)
-    if wv is not None:
+    # ── Exterior wall with fillet ──
+    result = _ring_to_wall_mesh(
+        polygon.exterior.coords, wall_height, r, n_arc, outward_sign=1
+    )
+    if result:
+        wv, wf = result
         meshes.append(trimesh.Trimesh(vertices=wv, faces=wf, process=False))
+
+    # ── Interior rings (holes) — wall faces inward ──
+    for interior in polygon.interiors:
+        result = _ring_to_wall_mesh(
+            interior.coords, wall_height, r, n_arc, outward_sign=-1
+        )
+        if result:
+            wv, wf = result
+            meshes.append(trimesh.Trimesh(vertices=wv, faces=wf, process=False))
 
     if not meshes:
         return None
@@ -189,9 +225,7 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=16):
 
 
 def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=16):
-    """
-    Main entry. Returns binary STL bytes.
-    """
+    """Main entry. Returns binary STL bytes."""
     polygons = svg_to_polygons(svg_bytes)
     if not polygons:
         raise ValueError(
@@ -204,12 +238,10 @@ def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=
         if isinstance(poly, MultiPolygon):
             for sub in poly.geoms:
                 m = polygon_to_mesh(sub, wall_height_mm, fillet_radius_mm, n_arc)
-                if m is not None:
-                    meshes.append(m)
+                if m: meshes.append(m)
         else:
             m = polygon_to_mesh(poly, wall_height_mm, fillet_radius_mm, n_arc)
-            if m is not None:
-                meshes.append(m)
+            if m: meshes.append(m)
 
     if not meshes:
         raise ValueError("Nenhum contorno gerou geometria válida.")
