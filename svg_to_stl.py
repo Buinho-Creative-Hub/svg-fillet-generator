@@ -1,6 +1,13 @@
 """
-svg_to_stl.py — SVG → STL with rounded top edges (fillet)
+svg_to_stl.py — SVG → STL with rounded top edges (fillet) + wall thickness
 Buinho FabLab · CC-BY-SA 4.0
+
+v2.1 — adds wall_thickness parameter
+  - wall_thickness > 0: hollow wall (outer outline - inner buffer)
+  - wall_thickness = 0: solid fill (original behaviour)
+  - max fillet formula updated: min(height/2, thickness/2) when hollow
+    Rationale: a thicker wall allows a larger fillet because there is more
+    physical material available on the outer face and top face.
 """
 
 import numpy as np
@@ -138,6 +145,48 @@ def svg_to_polygons(svg_bytes):
     return [_orient(result)]
 
 
+# ─── Wall thickness ───────────────────────────────────────────────────────────
+
+def apply_wall_thickness(polygon, wall_thickness):
+    """
+    Convert a solid polygon to a hollow ring by subtracting an inward offset.
+
+    wall_thickness > 0: returns polygon minus an inward buffer.
+    wall_thickness = 0: returns the original solid polygon unchanged.
+
+    If the inner buffer collapses the polygon entirely (shape too small for
+    the requested thickness), falls back to solid fill silently.
+    """
+    if wall_thickness <= 0:
+        return polygon  # solid fill
+
+    inner = polygon.buffer(-wall_thickness, join_style=2, cap_style=2)
+    if inner.is_empty or inner.area < 0.01:
+        return polygon  # too thin — use solid
+
+    ring = polygon.difference(inner)
+    if ring.is_empty or not ring.is_valid:
+        return polygon
+    return ring
+
+
+def max_fillet_for(wall_height, wall_thickness):
+    """
+    Compute the maximum valid fillet radius given height and wall thickness.
+
+    The fillet arc is a quarter-circle of radius R that sits in the corner
+    between the outer face (vertical) and the top face (horizontal).
+    It must fit inside both:
+      - the height:    R ≤ height / 2
+      - the thickness: R ≤ thickness / 2   (hollow only; thicker wall → more room)
+
+    For solid fill (thickness=0) only the height constraint applies.
+    """
+    if wall_thickness > 0:
+        return min(wall_height / 2.0, wall_thickness / 2.0)
+    return wall_height / 2.0
+
+
 # ─── 3-D geometry ─────────────────────────────────────────────────────────────
 
 def _vertex_normals(pts):
@@ -175,22 +224,18 @@ def _max_valid_inset(pts, r_target, tol=0.05):
 
 def _max_safe_interring_inset(polygon, r_target, min_cap_gap=0.5):
     """
-    Compute the maximum safe inset radius for a polygon's cap triangulation.
+    Compute the maximum safe inset radius for cap triangulation.
 
     When the exterior ring and hole rings are each inset by r, their mutual
-    distance decreases by ~2r (they move toward each other). If two rings
-    come closer than min_cap_gap, the cap triangulation becomes degenerate
-    (earcut bridge artefacts, slivers, wrong-winding faces).
-
-    Returns the largest r ≤ r_target such that all inter-ring gaps after
-    inset remain ≥ min_cap_gap.
+    distance decreases by ~2r. If two rings come closer than min_cap_gap,
+    the cap triangulation becomes degenerate.
     """
     all_rings = (
         [np.array(list(polygon.exterior.coords)[:-1])] +
         [np.array(list(h.coords)[:-1]) for h in polygon.interiors]
     )
     if len(all_rings) <= 1:
-        return r_target  # single ring: no inter-ring constraint
+        return r_target
 
     r_safe = r_target
     for i in range(len(all_rings)):
@@ -198,31 +243,17 @@ def _max_safe_interring_inset(polygon, r_target, min_cap_gap=0.5):
             tree = cKDTree(all_rings[i])
             dists, _ = tree.query(all_rings[j])
             min_d = dists.min()
-            # After inset by r: gap ≈ min_d - 2r ≥ min_cap_gap
-            # → r ≤ (min_d - min_cap_gap) / 2
             r_pair = (min_d - min_cap_gap) / 2.0
             if r_pair < r_safe:
                 r_safe = r_pair
 
-    return max(r_safe, 0.05)  # never go below 0.05mm
+    return max(r_safe, 0.05)
 
 
 def _triangulate_cap(ring_xys_list, shapely_poly, z_level):
     """
     Earcut cap triangulation with snap-to-ring.
-
-    earcut (via trimesh) handles polygon holes natively — no spurious triangles
-    crossing concavities.
-
-    All earcut vertices are snapped to the nearest ring vertex. Earcut sometimes
-    emits duplicate bridge vertices at dist=0 from ring verts; snapping collapses
-    those to the ring, occasionally leaving one or two non-ring open edges in the
-    cap. These are handled by trimesh.repair.fill_holes() in polygon_to_mesh,
-    which closes them correctly with consistent winding (adding them here
-    manually would interfere with fill_holes).
-
     Returns: (faces_local, empty_array)
-      faces_local — indices into np.vstack(ring_xys_list)
     """
     if shapely_poly is None or shapely_poly.is_empty:
         return np.empty((0,3), int), np.empty((0,3))
@@ -238,7 +269,6 @@ def _triangulate_cap(ring_xys_list, shapely_poly, z_level):
         return np.empty((0,3), int), np.empty((0,3))
 
     all_ring = np.vstack(ring_xys_list)
-    n_ring   = len(all_ring)
     tree     = cKDTree(all_ring)
     _, nearest = tree.query(v2d)
 
@@ -251,17 +281,36 @@ def _triangulate_cap(ring_xys_list, shapely_poly, z_level):
     return faces, np.empty((0, 3))
 
 
-def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=24):
-    """Single watertight mesh for a shapely Polygon (may have holes)."""
-    # Cap 1: wall height constraint
-    r_global = min(fillet_radius, wall_height * 0.48)
+def polygon_to_mesh(polygon, wall_height, fillet_radius, wall_thickness=0, n_arc=24):
+    """
+    Single watertight mesh for a shapely Polygon (may have holes).
+
+    wall_thickness: thickness of the extruded wall (mm).
+      > 0 → hollow shell; the polygon is converted to a ring via
+            polygon.difference(polygon.buffer(-wall_thickness)).
+      = 0 → solid fill (original behaviour, backward-compatible).
+
+    fillet_radius: top-edge rounding radius.
+      Automatically clamped to max_fillet_for(wall_height, wall_thickness).
+      Thicker walls allow larger fillets because there is more material
+      available on both the outer face and the top face.
+    """
+    # ── Apply wall thickness to get the working cross-section ────────────────
+    working_poly = apply_wall_thickness(polygon, wall_thickness)
+    if working_poly is None or working_poly.is_empty:
+        return None
+
+    # ── Clamp fillet radius ───────────────────────────────────────────────────
+    r_max = max_fillet_for(wall_height, wall_thickness)
+    r_global = min(fillet_radius, r_max)
     # Cap 2: inter-ring proximity (prevents degenerate cap triangulation)
-    if len(list(polygon.interiors)) > 0:
-        r_global = _max_safe_interring_inset(polygon, r_global)
+    if len(list(working_poly.interiors)) > 0:
+        r_global = _max_safe_interring_inset(working_poly, r_global)
+
     all_verts, all_faces, global_offset, cap_data = [], [], 0, []
 
-    rings = [(polygon.exterior.coords, False)] + [
-        (interior.coords, True) for interior in polygon.interiors
+    rings = [(working_poly.exterior.coords, False)] + [
+        (interior.coords, True) for interior in working_poly.interiors
     ]
 
     for ring_coords, is_hole in rings:
@@ -348,7 +397,8 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, n_arc=24):
     return mesh
 
 
-def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=16):
+def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0,
+                     wall_thickness_mm=0.0, n_arc=16):
     polygons = svg_to_polygons(svg_bytes)
     if not polygons:
         raise ValueError(
@@ -371,7 +421,8 @@ def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=
 
     meshes = []
     for poly in simplified:
-        m = polygon_to_mesh(poly, wall_height_mm, fillet_radius_mm, n_arc)
+        m = polygon_to_mesh(poly, wall_height_mm, fillet_radius_mm,
+                            wall_thickness=wall_thickness_mm, n_arc=n_arc)
         if m: meshes.append(m)
 
     if not meshes:
@@ -382,7 +433,8 @@ def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0, n_arc=
 
 
 def svg_bytes_to_stl_with_info(svg_bytes, wall_height_mm=5.0,
-                                fillet_radius_mm=1.0, n_arc=16):
+                                fillet_radius_mm=1.0, wall_thickness_mm=0.0,
+                                n_arc=16):
     """Like svg_bytes_to_stl but also returns a dict with effective parameters."""
     polygons = svg_to_polygons(svg_bytes)
     if not polygons:
@@ -404,16 +456,19 @@ def svg_bytes_to_stl_with_info(svg_bytes, wall_height_mm=5.0,
     if not simplified:
         raise ValueError("Nenhum contorno gerou geometria válida.")
 
-    r_base = min(fillet_radius_mm, wall_height_mm * 0.48)
+    # Compute effective fillet (before per-polygon clamping)
+    r_base = min(fillet_radius_mm, max_fillet_for(wall_height_mm, wall_thickness_mm))
     effective_r = r_base
     for poly in simplified:
-        if len(list(poly.interiors)) > 0:
-            r_poly = _max_safe_interring_inset(poly, r_base)
+        working = apply_wall_thickness(poly, wall_thickness_mm)
+        if len(list(working.interiors)) > 0:
+            r_poly = _max_safe_interring_inset(working, r_base)
             effective_r = min(effective_r, r_poly)
 
     meshes = []
     for poly in simplified:
-        m = polygon_to_mesh(poly, wall_height_mm, fillet_radius_mm, n_arc)
+        m = polygon_to_mesh(poly, wall_height_mm, fillet_radius_mm,
+                            wall_thickness=wall_thickness_mm, n_arc=n_arc)
         if m: meshes.append(m)
 
     if not meshes:
@@ -426,6 +481,7 @@ def svg_bytes_to_stl_with_info(svg_bytes, wall_height_mm=5.0,
         'fillet_requested_mm': fillet_radius_mm,
         'fillet_effective_mm': round(effective_r, 2),
         'fillet_capped': effective_r < fillet_radius_mm * 0.99,
+        'wall_thickness_mm': wall_thickness_mm,
         'polygons': len(simplified),
     }
     return stl_bytes, info
