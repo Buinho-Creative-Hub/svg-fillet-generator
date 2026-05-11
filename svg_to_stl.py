@@ -108,8 +108,12 @@ def svg_to_polygons(svg_bytes):
     if len(paths) != len(path_transforms):
         path_transforms = [(None, np.eye(3)) for _ in paths]
 
-    raw_polys, raw_lines = [], []
-    for path_obj, (_, m) in zip(paths, path_transforms):
+    def _path_to_polygon(path_obj, m):
+        """Convert a single SVG path element to a Shapely polygon using
+        per-path even-odd fill rule on its subpaths. This correctly handles
+        compound paths (multiple M...Z subpaths) by computing nesting depth
+        within the path element itself, not globally."""
+        subs, raw_lines = [], []
         for sp in _split_subpaths(path_obj):
             pts_c = [seg.point(i/20) for seg in sp for i in range(20)]
             if len(pts_c) < 3: continue
@@ -118,24 +122,54 @@ def svg_to_polygons(svg_bytes):
             if closed:
                 poly = Polygon(xy)
                 if not poly.is_valid: poly = poly.buffer(0)
-                if poly.is_valid and poly.area > 0.1: raw_polys.append(poly)
+                if poly.is_valid and poly.area > 0.1: subs.append(poly)
             elif len(xy) >= 2:
                 raw_lines.append(xy)
 
-    for lp in raw_lines:
-        try:
-            poly = LineString(lp).buffer(2.0, cap_style=2, join_style=2)
-            if poly.is_valid and poly.area > 0.1: raw_polys.append(poly)
-        except Exception: pass
+        # Convert open lines to buffered polygons
+        for lp in raw_lines:
+            try:
+                poly = LineString(lp).buffer(2.0, cap_style=2, join_style=2)
+                if poly.is_valid and poly.area > 0.1: subs.append(poly)
+            except Exception: pass
 
-    if not raw_polys: return []
+        if not subs: return None
 
-    raw_polys.sort(key=lambda p: p.area, reverse=True)
-    result = raw_polys[0]
-    for poly in raw_polys[1:]:
+        # Even-odd rule: sort by area, count containment depth within this path.
+        # depth even = filled, depth odd = hole.
+        subs.sort(key=lambda p: p.area, reverse=True)
+        result = None
+        for poly in subs:
+            depth = sum(1 for q in subs if q.area > poly.area and q.contains(poly.centroid))
+            if depth % 2 == 0:
+                result = poly if result is None else result.union(poly)
+            else:
+                if result is not None:
+                    try: result = result.difference(poly)
+                    except Exception: pass
+        return result
+
+    path_results = []
+    for path_obj, (_, m) in zip(paths, path_transforms):
+        r = _path_to_polygon(path_obj, m)
+        if r is not None and not r.is_empty:
+            if not r.is_valid: r = r.buffer(0)
+            if r.is_valid and r.area > 0.1:
+                path_results.append(r)
+
+    if not path_results: return []
+
+    # Inter-path composition: use centroid containment (original even-odd logic)
+    # If path B's centroid is inside current result, subtract it (it's a hole).
+    # Otherwise union it (it's an additive shape).
+    path_results.sort(key=lambda p: p.area, reverse=True)
+    result = path_results[0]
+    for p in path_results[1:]:
         try:
-            if result.contains(poly.centroid): result = result.difference(poly)
-            else: result = result.union(poly)
+            if result.contains(p.centroid):
+                result = result.difference(p)
+            else:
+                result = result.union(p)
         except Exception: pass
 
     if result.is_empty: return []
