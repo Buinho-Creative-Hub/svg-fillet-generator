@@ -2,7 +2,7 @@
 svg_to_stl.py — SVG → STL with rounded top edges (fillet) + wall thickness
 Buinho FabLab · CC-BY-SA 4.0
 
-v2.5 — remove collinear verts before _max_valid_inset (fixes asymmetric fillet)
+v2.6 — uniform r from simplified exterior (fixes asymmetric + limited fillet)
   - wall_thickness > 0: hollow wall (outer outline - inner buffer)
   - fix: orient() the ring result so exterior is CCW → normals outward → fillet concave
   - wall_thickness = 0: solid fill (original behaviour)
@@ -342,12 +342,18 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, wall_thickness=0, n_arc
         (interior.coords, True) for interior in working_poly.interiors
     ]
 
+    # Compute r ONCE from the exterior ring using simplify(0.5) to avoid
+    # artificially low values from near-collinear clusters (e.g. chimney junctions).
+    # The actual geometry (pts) keeps full resolution — only r calculation is simplified.
+    _ext_simplified = np.array(list(working_poly.exterior.simplify(0.5).coords)[:-1])
+    r_uniform = _max_valid_inset(_ext_simplified, r_global)
+
     for ring_coords, is_hole in rings:
         pts    = np.array(list(ring_coords)[:-1])
         n_ring = len(pts)
         if n_ring < 3: continue
 
-        r  = _max_valid_inset(pts, r_global)
+        r  = r_uniform  # same fillet for all rings, computed from simplified exterior
         sh = wall_height - r
         z_lv = [0.0, sh] + [sh + r*math.sin(math.pi/2*s/n_arc) for s in range(1, n_arc+1)]
         u_lv = [0.0, 0.0] + [r*(1-math.cos(math.pi/2*s/n_arc)) for s in range(1, n_arc+1)]
