@@ -2,7 +2,7 @@
 svg_to_stl.py — SVG → STL with rounded top edges (fillet) + wall thickness
 Buinho FabLab · CC-BY-SA 4.0
 
-v2.2 — fix fillet direction for wall_thickness > 0
+v2.3 — handle MultiPolygon from apply_wall_thickness
   - wall_thickness > 0: hollow wall (outer outline - inner buffer)
   - fix: orient() the ring result so exterior is CCW → normals outward → fillet concave
   - wall_thickness = 0: solid fill (original behaviour)
@@ -168,6 +168,10 @@ def apply_wall_thickness(polygon, wall_thickness):
     ring = polygon.difference(inner)
     if ring.is_empty or not ring.is_valid:
         return polygon
+    # difference() can return a MultiPolygon if wall_thickness splits the shape
+    # in that case, take the largest piece (most of the geometry survives)
+    if ring.geom_type == 'MultiPolygon':
+        ring = max(ring.geoms, key=lambda g: g.area)
     return orient(ring, sign=1.0)  # ensure CCW exterior so vertex normals point outward
 
 
