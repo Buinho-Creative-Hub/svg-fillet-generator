@@ -748,7 +748,7 @@ def generate():
         return jsonify({'error': 'Parâmetros inválidos.'}), 400
 
     wall_height = max(1.0, min(50.0, wall_height))
-    wall_thickness = max(0.0, min(wall_height / 2 - 0.1, wall_thickness))
+    wall_thickness = max(0.0, min(wall_height - 0.1, wall_thickness))  # allow up to height-0.1mm
 
     # Clamp fillet: mirrors max_fillet_for() in svg_to_stl.py
     if wall_thickness > 0:
