@@ -145,8 +145,8 @@ HTML = r"""<!DOCTYPE html>
   }
 
   /* ── Sliders ── */
-  .params { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-bottom: 1rem; }
-  @media (max-width: 480px) { .params { grid-template-columns: 1fr; } }
+  .params { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.2rem; margin-bottom: 1rem; }
+  @media (max-width: 600px) { .params { grid-template-columns: 1fr; } }
 
   label {
     display: block; font-weight: 600; color: var(--azul);
@@ -353,8 +353,8 @@ HTML = r"""<!DOCTYPE html>
     <span class="en">Parameters</span>
   </h2>
   <p class="sub">
-    <span class="pt">Ajusta a altura da parede e o raio do arredondamento.</span>
-    <span class="en">Adjust wall height and rounding radius.</span>
+    <span class="pt">Ajusta a altura, espessura e raio de arredondamento.</span>
+    <span class="en">Adjust wall height, thickness and rounding radius.</span>
   </p>
   <div class="params">
     <div>
@@ -370,13 +370,24 @@ HTML = r"""<!DOCTYPE html>
     </div>
     <div>
       <div class="param-row">
+        <span class="pt">Espessura da parede</span><span class="en">Wall thickness</span>
+        <span class="val" id="thicknessVal">0 <span class="pt">sólido</span><span class="en">solid</span></span>
+      </div>
+      <input type="range" id="wallThickness" min="0" max="20" step="0.5" value="0">
+      <div class="param-hint">
+        <span class="pt">0 = preenchimento sólido · parede mais espessa → fillet maior possível</span>
+        <span class="en">0 = solid fill · thicker wall → larger fillet possible</span>
+      </div>
+    </div>
+    <div>
+      <div class="param-row">
         <span class="pt">Raio do fillet</span><span class="en">Fillet radius</span>
         <span class="val" id="filletVal">1.0 mm</span>
       </div>
-      <input type="range" id="filletRadius" min="0.2" max="8" step="0.1" value="1">
+      <input type="range" id="filletRadius" min="0.2" max="15" step="0.1" value="1">
       <div class="param-hint">
-        <span class="pt">Arredondamento superior (≤ metade da altura)</span>
-        <span class="en">Top rounding (≤ half the wall height)</span>
+        <span class="pt">Limite: <span id="filletLimitHint">metade da altura</span></span>
+        <span class="en">Limit: <span id="filletLimitHintEn">half the height</span></span>
       </div>
     </div>
   </div>
@@ -466,13 +477,25 @@ const dropZone    = document.getElementById('dropZone');
 const fileInput   = document.getElementById('svgFile');
 const fileName    = document.getElementById('fileName');
 const btnGen      = document.getElementById('btnGenerate');
-const wallSlider  = document.getElementById('wallHeight');
-const filletSlider = document.getElementById('filletRadius');
-const heightVal   = document.getElementById('heightVal');
-const filletVal   = document.getElementById('filletVal');
+const wallSlider      = document.getElementById('wallHeight');
+const thicknessSlider = document.getElementById('wallThickness');
+const filletSlider    = document.getElementById('filletRadius');
+const heightVal       = document.getElementById('heightVal');
+const thicknessVal    = document.getElementById('thicknessVal');
+const filletVal       = document.getElementById('filletVal');
+const filletLimitHint   = document.getElementById('filletLimitHint');
+const filletLimitHintEn = document.getElementById('filletLimitHintEn');
 const sectionSvg  = document.getElementById('section-svg');
 
 let selectedFile = null;
+
+// ── Fillet limit formula (mirrors Python) ────────────────────────
+// max_fillet = min(height/2, thickness/2)  when thickness > 0
+// max_fillet = height/2                    when thickness = 0 (solid)
+function maxFillet(H, T) {
+  if (T > 0) return Math.min(H / 2, T / 2);
+  return H / 2;
+}
 
 // ── File selection ────────────────────────────────────────────────
 fileInput.addEventListener('change', e => {
@@ -499,17 +522,45 @@ function setFile(f) {
 }
 
 // ── Sliders ──────────────────────────────────────────────────────
-wallSlider.addEventListener('input', () => {
-  const h = parseFloat(wallSlider.value);
-  heightVal.textContent = h.toFixed(1) + ' mm';
-  const maxF = h / 2;
-  if (parseFloat(filletSlider.value) > maxF) {
-    filletSlider.value = maxF.toFixed(1);
-    filletVal.textContent = maxF.toFixed(1) + ' mm';
+function updateSliders() {
+  const H = parseFloat(wallSlider.value);
+  const T = parseFloat(thicknessSlider.value);
+  const maxF = maxFillet(H, T);
+
+  heightVal.textContent = H.toFixed(1) + ' mm';
+
+  if (T <= 0) {
+    thicknessVal.innerHTML = '0 <span class="pt">sólido</span><span class="en">solid</span>';
+    const langPt = thicknessVal.querySelector('.pt');
+    const langEn = thicknessVal.querySelector('.en');
+    if (langPt) langPt.style.display = (window._lang === 'en') ? 'none' : 'inline';
+    if (langEn) langEn.style.display = (window._lang === 'en') ? 'inline' : 'none';
+  } else {
+    thicknessVal.textContent = T.toFixed(1) + ' mm';
   }
-  filletSlider.max = maxF;
+
+  filletSlider.max = maxF.toFixed(2);
+  if (parseFloat(filletSlider.value) > maxF) {
+    filletSlider.value = maxF.toFixed(2);
+  }
+  filletVal.textContent = parseFloat(filletSlider.value).toFixed(1) + ' mm';
+
+  // Update hint text
+  let hintPt, hintEn;
+  if (T > 0) {
+    hintPt = `min(H/2, T/2) = ${maxF.toFixed(1)} mm`;
+    hintEn = `min(H/2, T/2) = ${maxF.toFixed(1)} mm`;
+  } else {
+    hintPt = `metade da altura = ${maxF.toFixed(1)} mm`;
+    hintEn = `half the height = ${maxF.toFixed(1)} mm`;
+  }
+  if (filletLimitHint) filletLimitHint.textContent = hintPt;
+  if (filletLimitHintEn) filletLimitHintEn.textContent = hintEn;
+
   drawSection();
-});
+}
+wallSlider.addEventListener('input', updateSliders);
+thicknessSlider.addEventListener('input', updateSliders);
 filletSlider.addEventListener('input', () => {
   filletVal.textContent = parseFloat(filletSlider.value).toFixed(1) + ' mm';
   drawSection();
@@ -518,6 +569,7 @@ filletSlider.addEventListener('input', () => {
 // ── Cross-section preview ─────────────────────────────────────────
 function drawSection() {
   const H = parseFloat(wallSlider.value);
+  const T = parseFloat(thicknessSlider.value);
   const R = parseFloat(filletSlider.value);
 
   const VW = 200, VH = 140;
@@ -556,14 +608,34 @@ function drawSection() {
 
   const d = 'M' + pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' L') + ' Z';
 
+  // Hollow cavity (only if T > 0 and T < Wpx/scale / 2)
+  let cavityPath = '';
+  const Tpx = T * scale;
+  if (T > 0 && Tpx * 2 < Wpx - 2) {
+    const ix = bx + Tpx;
+    const iW = Wpx - 2 * Tpx;
+    cavityPath = `<rect x="${ix.toFixed(1)}" y="${topY.toFixed(1)}"
+      width="${iW.toFixed(1)}" height="${Hpx.toFixed(1)}"
+      fill="#FAF0E1" stroke="#2038A6" stroke-width="1" stroke-dasharray="3,2" opacity="0.9"/>`;
+  }
+
   const dimX = bx - 6;
   const hLabelY = (by + topY) / 2 + 4;
   const rLabelY = (arcBaseY + topY) / 2 + 3;
+
+  // T label
+  let tLabel = '';
+  if (T > 0 && Tpx > 4) {
+    tLabel = `
+    <line x1="${bx.toFixed(1)}" y1="${(by+10).toFixed(1)}" x2="${(bx+Tpx).toFixed(1)}" y2="${(by+10).toFixed(1)}" stroke="#FCB515" stroke-width="1.5"/>
+    <text x="${(bx + Tpx/2).toFixed(1)}" y="${(by+20).toFixed(1)}" text-anchor="middle" font-family="Asap,sans-serif" font-size="8" font-weight="700" fill="#b07800">T=${T.toFixed(1)}</text>`;
+  }
 
   sectionSvg.innerHTML = `
     <rect width="${VW}" height="${VH}" fill="#f9f6f1" rx="8"/>
     <line x1="${bx - 4}" y1="${by}" x2="${bx + Wpx + 4}" y2="${by}" stroke="#bbb" stroke-width="1"/>
     <path d="${d}" fill="rgba(32,56,166,0.12)" stroke="#2038A6" stroke-width="1.8" stroke-linejoin="round"/>
+    ${cavityPath}
     <path d="M${bx.toFixed(1)},${arcBaseY.toFixed(1)} ${pts.slice(1, arcN+2).map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}"
           fill="none" stroke="#FA6415" stroke-width="2" stroke-linecap="round"/>
     <path d="M${(bx+Wpx-Rpx).toFixed(1)},${topY.toFixed(1)} ${pts.slice(arcN+3, arcN*2+4).map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}"
@@ -578,10 +650,11 @@ function drawSection() {
     ` : `
     <text x="${(bx+Wpx/2).toFixed(1)}" y="${(topY-5).toFixed(1)}" text-anchor="middle" font-family="Asap,sans-serif" font-size="8" fill="#2038A6">r=${R.toFixed(1)}mm</text>
     `}
+    ${tLabel}
     <text x="${(bx+Wpx/2).toFixed(1)}" y="${(by+16).toFixed(1)}" text-anchor="middle" font-family="Asap,sans-serif" font-size="8" fill="#999">secção transversal</text>
   `;
 }
-drawSection();
+updateSliders();
 
 // ── Generate ──────────────────────────────────────────────────────
 btnGen.addEventListener('click', async () => {
@@ -593,6 +666,7 @@ btnGen.addEventListener('click', async () => {
   const fd = new FormData();
   fd.append('svg', selectedFile);
   fd.append('wall_height', wallSlider.value);
+  fd.append('wall_thickness', thicknessSlider.value);
   fd.append('fillet_radius', filletSlider.value);
 
   try {
@@ -619,11 +693,11 @@ btnGen.addEventListener('click', async () => {
     const lang = window._lang || 'pt';
     let msg;
     if (lang === 'en') {
-      msg = `STL generated! (wall ${wallSlider.value}mm · fillet ${filletSlider.value}mm)`;
+      msg = `STL generated! (wall ${wallSlider.value}mm · thickness ${thicknessSlider.value > 0 ? thicknessSlider.value+'mm' : 'solid'} · fillet ${filletSlider.value}mm)`;
       if (wasCapped && effR2) msg += ` — ⚠️ fillet reduced to ${parseFloat(effR2).toFixed(2)}mm (complex shape)`;
       msg += ' · If importing into Tinkercad, select all and group (Ctrl+G).';
     } else {
-      msg = `STL gerado! (parede ${wallSlider.value}mm · fillet ${filletSlider.value}mm)`;
+      msg = `STL gerado! (parede ${wallSlider.value}mm · espessura ${thicknessSlider.value > 0 ? thicknessSlider.value+'mm' : 'sólido'} · fillet ${filletSlider.value}mm)`;
       if (wasCapped && effR2) msg += ` — ⚠️ fillet reduzido para ${parseFloat(effR2).toFixed(2)}mm (forma complexa)`;
       msg += ' · Se importares no Tinkercad, selecciona tudo e agrupa (Ctrl+G).';
     }
@@ -669,15 +743,26 @@ def generate():
     try:
         wall_height = float(request.form.get('wall_height', 5.0))
         fillet_radius = float(request.form.get('fillet_radius', 1.0))
+        wall_thickness = float(request.form.get('wall_thickness', 0.0))
     except ValueError:
         return jsonify({'error': 'Parâmetros inválidos.'}), 400
 
     wall_height = max(1.0, min(50.0, wall_height))
-    fillet_radius = max(0.1, min(wall_height / 2, fillet_radius))
+    wall_thickness = max(0.0, min(wall_height / 2 - 0.1, wall_thickness))
+
+    # Clamp fillet: mirrors max_fillet_for() in svg_to_stl.py
+    if wall_thickness > 0:
+        max_f = min(wall_height / 2, wall_thickness / 2)
+    else:
+        max_f = wall_height / 2
+    fillet_radius = max(0.1, min(max_f, fillet_radius))
 
     svg_bytes = svg_file.read()
     try:
-        stl_bytes, info = svg_bytes_to_stl_with_info(svg_bytes, wall_height, fillet_radius)
+        stl_bytes, info = svg_bytes_to_stl_with_info(
+            svg_bytes, wall_height, fillet_radius,
+            wall_thickness_mm=wall_thickness
+        )
     except ValueError as e:
         return jsonify({'error': str(e)}), 422
     except Exception as e:
@@ -708,3 +793,4 @@ def generate():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
