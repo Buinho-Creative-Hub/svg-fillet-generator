@@ -2,8 +2,9 @@
 svg_to_stl.py — SVG → STL with rounded top edges (fillet) + wall thickness
 Buinho FabLab · CC-BY-SA 4.0
 
-v2.1 — adds wall_thickness parameter
+v2.2 — fix fillet direction for wall_thickness > 0
   - wall_thickness > 0: hollow wall (outer outline - inner buffer)
+  - fix: orient() the ring result so exterior is CCW → normals outward → fillet concave
   - wall_thickness = 0: solid fill (original behaviour)
   - max fillet formula updated: min(height/2, thickness/2) when hollow
     Rationale: a thicker wall allows a larger fillet because there is more
@@ -167,7 +168,7 @@ def apply_wall_thickness(polygon, wall_thickness):
     ring = polygon.difference(inner)
     if ring.is_empty or not ring.is_valid:
         return polygon
-    return ring
+    return orient(ring, sign=1.0)  # ensure CCW exterior so vertex normals point outward
 
 
 def max_fillet_for(wall_height, wall_thickness):
