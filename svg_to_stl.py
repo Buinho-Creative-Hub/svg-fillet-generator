@@ -2,7 +2,7 @@
 svg_to_stl.py — SVG → STL with rounded top edges (fillet) + wall thickness
 Buinho FabLab · CC-BY-SA 4.0
 
-v2.3 — handle MultiPolygon from apply_wall_thickness
+v2.5 — remove collinear verts before _max_valid_inset (fixes asymmetric fillet)
   - wall_thickness > 0: hollow wall (outer outline - inner buffer)
   - fix: orient() the ring result so exterior is CCW → normals outward → fillet concave
   - wall_thickness = 0: solid fill (original behaviour)
@@ -210,8 +210,32 @@ def _vertex_normals(pts):
     return vn
 
 
+def _remove_collinear(pts, angle_tol_deg=1.0):
+    """Remove near-collinear and duplicate vertices from a ring.
+    These arise from over-sampled SVG paths (20pts/segment) and cause
+    _max_valid_inset to return artificially small values.
+    """
+    n = len(pts)
+    keep = []
+    for i in range(n):
+        p0 = pts[(i-1) % n]; p1 = pts[i]; p2 = pts[(i+1) % n]
+        v1 = p1 - p0; v2 = p2 - p1
+        n1 = np.linalg.norm(v1); n2 = np.linalg.norm(v2)
+        if n1 < 1e-10 or n2 < 1e-10:
+            continue  # remove duplicates
+        cos_a = np.clip(np.dot(v1/n1, v2/n2), -1, 1)
+        ang = math.degrees(math.acos(abs(cos_a)))
+        if ang >= angle_tol_deg:
+            keep.append(i)
+    return pts[keep] if len(keep) >= 3 else pts
+
+
 def _max_valid_inset(pts, r_target, tol=0.05):
-    """Binary-search max inset r that keeps the ring non-self-intersecting."""
+    """Binary-search max inset r that keeps the ring non-self-intersecting.
+    Collinear vertices are removed first to avoid artificially low r values
+    from over-sampled SVG paths (svgpathtools samples 20pts/segment on lines).
+    """
+    pts = _remove_collinear(pts)
     vn = _vertex_normals(pts)
     def ok(u):
         if u <= 0: return True
