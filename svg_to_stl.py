@@ -2,7 +2,7 @@
 svg_to_stl.py — SVG → STL with rounded top edges (fillet) + wall thickness
 Buinho FabLab · CC-BY-SA 4.0
 
-v2.5 — remove collinear verts before _max_valid_inset (fixes asymmetric fillet)
+v2.6 — also filter short-edge artefacts in _remove_collinear (fixes chimney-junction r limit)
   - wall_thickness > 0: hollow wall (outer outline - inner buffer)
   - fix: orient() the ring result so exterior is CCW → normals outward → fillet concave
   - wall_thickness = 0: solid fill (original behaviour)
@@ -210,10 +210,14 @@ def _vertex_normals(pts):
     return vn
 
 
-def _remove_collinear(pts, angle_tol_deg=1.0):
-    """Remove near-collinear and duplicate vertices from a ring.
-    These arise from over-sampled SVG paths (20pts/segment) and cause
-    _max_valid_inset to return artificially small values.
+def _remove_collinear(pts, angle_tol_deg=1.0, min_edge_mm=1.0):
+    """Remove near-collinear, duplicate, and short-edge vertices from a ring.
+
+    Two sources of artificially low _max_valid_inset values:
+    1. Collinear vertices (0° turn) from svgpathtools 20pts/segment sampling.
+    2. Short-edge clusters at SVG path junctions (e.g. chimney meets roof):
+       a vertex with a 5° turn but flanked by edges <1mm is an artefact,
+       not a real geometric feature. Removing it restores the correct r.
     """
     n = len(pts)
     keep = []
@@ -223,6 +227,8 @@ def _remove_collinear(pts, angle_tol_deg=1.0):
         n1 = np.linalg.norm(v1); n2 = np.linalg.norm(v2)
         if n1 < 1e-10 or n2 < 1e-10:
             continue  # remove duplicates
+        if n1 < min_edge_mm or n2 < min_edge_mm:
+            continue  # remove short-edge junction artefacts
         cos_a = np.clip(np.dot(v1/n1, v2/n2), -1, 1)
         ang = math.degrees(math.acos(abs(cos_a)))
         if ang >= angle_tol_deg:
