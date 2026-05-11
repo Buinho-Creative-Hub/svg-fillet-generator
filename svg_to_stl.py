@@ -2,7 +2,7 @@
 svg_to_stl.py — SVG → STL with rounded top edges (fillet) + wall thickness
 Buinho FabLab · CC-BY-SA 4.0
 
-v2.3 — handle MultiPolygon from apply_wall_thickness
+v2.4 — uniform fillet: r computed from exterior ring, applied to all rings
   - wall_thickness > 0: hollow wall (outer outline - inner buffer)
   - fix: orient() the ring result so exterior is CCW → normals outward → fillet concave
   - wall_thickness = 0: solid fill (original behaviour)
@@ -318,12 +318,18 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, wall_thickness=0, n_arc
         (interior.coords, True) for interior in working_poly.interiors
     ]
 
+    # Compute r from the EXTERIOR ring only, then apply uniformly to ALL rings.
+    # This ensures all faces of the same polygon get the same fillet radius,
+    # avoiding visual asymmetry where different sides appear to have different fillets.
+    ext_pts = np.array(list(working_poly.exterior.coords)[:-1])
+    r_uniform = _max_valid_inset(ext_pts, r_global)
+
     for ring_coords, is_hole in rings:
         pts    = np.array(list(ring_coords)[:-1])
         n_ring = len(pts)
         if n_ring < 3: continue
 
-        r  = _max_valid_inset(pts, r_global)
+        r  = r_uniform  # same fillet for all rings in this polygon
         sh = wall_height - r
         z_lv = [0.0, sh] + [sh + r*math.sin(math.pi/2*s/n_arc) for s in range(1, n_arc+1)]
         u_lv = [0.0, 0.0] + [r*(1-math.cos(math.pi/2*s/n_arc)) for s in range(1, n_arc+1)]
@@ -424,9 +430,19 @@ def svg_bytes_to_stl(svg_bytes, wall_height_mm=5.0, fillet_radius_mm=1.0,
     if not simplified:
         raise ValueError("Nenhum contorno gerou geometria válida.")
 
+    # Compute a single r_global across ALL polygons so every piece gets the same fillet
+    r_base = min(fillet_radius_mm, max_fillet_for(wall_height_mm, wall_thickness_mm))
+    r_global = r_base
+    for poly in simplified:
+        working = apply_wall_thickness(poly, wall_thickness_mm)
+        ext = np.array(list(working.exterior.coords)[:-1])
+        r_global = min(r_global, _max_valid_inset(ext, r_global))
+        if len(list(working.interiors)) > 0:
+            r_global = min(r_global, _max_safe_interring_inset(working, r_global))
+
     meshes = []
     for poly in simplified:
-        m = polygon_to_mesh(poly, wall_height_mm, fillet_radius_mm,
+        m = polygon_to_mesh(poly, wall_height_mm, r_global,
                             wall_thickness=wall_thickness_mm, n_arc=n_arc)
         if m: meshes.append(m)
 
@@ -470,9 +486,19 @@ def svg_bytes_to_stl_with_info(svg_bytes, wall_height_mm=5.0,
             r_poly = _max_safe_interring_inset(working, r_base)
             effective_r = min(effective_r, r_poly)
 
+    # Recompute r_global consistently across ALL polygons (same value for all pieces)
+    r_global = r_base
+    for poly in simplified:
+        working = apply_wall_thickness(poly, wall_thickness_mm)
+        ext = np.array(list(working.exterior.coords)[:-1])
+        r_global = min(r_global, _max_valid_inset(ext, r_global))
+        if len(list(working.interiors)) > 0:
+            r_global = min(r_global, _max_safe_interring_inset(working, r_global))
+    effective_r = r_global
+
     meshes = []
     for poly in simplified:
-        m = polygon_to_mesh(poly, wall_height_mm, fillet_radius_mm,
+        m = polygon_to_mesh(poly, wall_height_mm, r_global,
                             wall_thickness=wall_thickness_mm, n_arc=n_arc)
         if m: meshes.append(m)
 
