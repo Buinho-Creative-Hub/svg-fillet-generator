@@ -681,7 +681,7 @@ btnGen.addEventListener('click', async () => {
     a.href = url;
     const cd = resp.headers.get('Content-Disposition') || '';
     const match = cd.match(/filename="([^"]+)"/);
-    a.download = match ? match[1] : 'buinho_fillet.stl';
+    a.download = match ? match[1] : (selectedFile ? selectedFile.name.replace(/\.svg$/i, '.stl') : 'buinho_fillet.stl');
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -785,7 +785,7 @@ def generate():
     response.headers['X-Fillet-Effective'] = str(round(eff_r_val, 3))
     response.headers['X-Fillet-Capped']    = 'true' if was_capped else 'false'
     response.headers['Access-Control-Expose-Headers'] = (
-        'X-Fillet-Requested, X-Fillet-Effective, X-Fillet-Capped'
+        'X-Fillet-Requested, X-Fillet-Effective, X-Fillet-Capped, Content-Disposition'
     )
     return response
 
