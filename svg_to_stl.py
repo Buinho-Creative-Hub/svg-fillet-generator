@@ -350,6 +350,10 @@ def polygon_to_mesh(polygon, wall_height, fillet_radius, wall_thickness=0, n_arc
 
     for ring_coords, is_hole in rings:
         pts    = np.array(list(ring_coords)[:-1])
+        # Clean the ring before computing normals and the wall sweep.
+        # Short-edge clusters from SVG path junctions produce bad normals
+        # that make the inset go in the wrong direction on those vertices.
+        pts    = _remove_collinear(pts)
         n_ring = len(pts)
         if n_ring < 3: continue
 
